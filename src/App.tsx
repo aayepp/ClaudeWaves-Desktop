@@ -2986,6 +2986,8 @@ export const App: React.FC = () => {
       {/* Fullscreen Ambient Visualizer / Monitor-2 Mode */}
       <AmbientVisualizerView
         open={ambientModeOpen}
+        preset={settings.ambientPreset}
+        onChangePreset={(ambientPreset) => updateSettings({ ambientPreset })}
         player={player.state}
         analyserRef={player.analyserRef}
         waveColorHex={waveColorHex}

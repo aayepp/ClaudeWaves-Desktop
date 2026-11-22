@@ -47,6 +47,11 @@ function mergeLibrary(parsed: Partial<LibraryData>, fallback: LibraryData): Libr
     skinVal === 'nothing'
       ? skinVal
       : fallback.settings.layoutSkin;
+  const ambVal = rawSettings.ambientPreset as string | undefined;
+  const migratedAmbient =
+    ambVal === 'aurora' || ambVal === 'vinyl' || ambVal === 'halo' || ambVal === 'wave'
+      ? ambVal
+      : fallback.settings.ambientPreset;
   return {
     settings: {
       ...DEFAULT_SETTINGS,
@@ -54,6 +59,7 @@ function mergeLibrary(parsed: Partial<LibraryData>, fallback: LibraryData): Libr
       ...rawSettings,
       themePreset: migratedPreset,
       layoutSkin: migratedSkin,
+      ambientPreset: migratedAmbient,
       closeToTray:
         typeof rawSettings.closeToTray === 'boolean'
           ? rawSettings.closeToTray

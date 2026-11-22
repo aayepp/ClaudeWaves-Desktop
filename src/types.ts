@@ -92,6 +92,7 @@ export type GlassQualityMode = 'low' | 'auto' | 'high';
 export type LyricsFontSize = 'compact' | 'normal' | 'large';
 export type LyricsBounceStyle = 'subtle' | 'expressive' | 'bold';
 export type LyricsDisplayMode = 'sentence' | 'word';
+export type AmbientPreset = 'aurora' | 'vinyl' | 'halo' | 'wave';
 
 export interface TrackPlayStat {
   track: Track;
@@ -155,6 +156,7 @@ export interface AppSettings {
   discordRpcEnabled: boolean;
   discordClientId: string;
   lastFmEnabled: boolean;
+  ambientPreset: AmbientPreset;
 }
 
 export interface OfflineTrackEntry extends Track {
@@ -238,6 +240,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   discordRpcEnabled: true,
   discordClientId: '',
   lastFmEnabled: true,
+  ambientPreset: 'aurora',
 };
 
 // 12 Curated Accent Colors (Neutral Clean default + 11 refined hues, no harsh neon green default)

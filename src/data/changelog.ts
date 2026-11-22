@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.0';
+export const APP_VERSION = '1.4.1';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,18 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.1',
+    date: '2026-11-22',
+    summary: 'Ambient Visualizer 4-Preset Studio: live switcher between Apple Aurora Split, Vinyl Turntable Studio, Radial 360 Halo & Nebula, and Dual-Mirror Studio Wave.',
+    added: [
+      '4 live-switchable Ambient presets via top frosted pill or hotkey V: Aurora Split (fluid mesh + 5-line synced lyrics + silk ribbon), Vinyl Turntable (spinning 12-inch record + articulated tonearm + platter glow), Radial 360 Halo (symmetrical radial ring + nebula particles), and Dual-Mirror Studio Wave (centered dual-mirror bars + analog oscilloscope).',
+      'Shared elevated dark-glass floating transport capsule cleanly separated from visualizer canvas layers.',
+    ],
+    fixed: [
+      'Replaced uneven linear FFT mapping with logarithmic balanced symmetric band sampling so left and right sides react evenly across bass, mids, and highs.',
+    ],
+  },
   {
     version: '1.4.0',
     date: '2026-11-22',
