@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.1';
+export const APP_VERSION = '1.4.2';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,18 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.2',
+    date: '2026-11-22',
+    summary: 'UI Polish & Quick EQ Toggle: frameless Floating Lyrics overlay without Windows DWM bar overlap, tidy single-line Sidebar Stats widget, and toggleable Quick EQ + DSP popup.',
+    added: [
+      'Quick EQ & DSP Popover toggled directly from the sidebar EQ button (click again or press Esc/outside to close) with 10-band sliders, presets, AutoEQ profile selector, Volume Normalizer, and Spatial 3D switches.',
+    ],
+    fixed: [
+      'Eliminated the Windows DWM white titlebar strip (claudewaves-desktop) on top of the Floating Lyrics overlay by setting thickFrame: false, resizable: false, null menu, and extra top hover clearance.',
+      'Fixed two-line wrapping on the Sidebar STATS header and listen-time pill (6h 46m) with single-line nowrap pills and balanced column divider.',
+    ],
+  },
   {
     version: '1.4.1',
     date: '2026-11-22',

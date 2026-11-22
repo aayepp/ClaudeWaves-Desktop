@@ -51,6 +51,7 @@ interface SidebarProps {
   playlists: UserPlaylist[];
   stats: ListeningStats;
   eqPreset: string;
+  eqOpen?: boolean;
   autoRadio: boolean;
   sleepRemainingSec: number | null;
   intensity: number;
@@ -82,6 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   playlists,
   stats,
   eqPreset,
+  eqOpen = false,
   autoRadio,
   sleepRemainingSec,
   intensity,
@@ -527,10 +529,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             title="Open Full Stats & Listening Wrapped"
             onClick={() => onSelectRoute({ kind: 'stats' })}
           >
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span className="cw-sidebar-widget-title">
               <BarChart3 size={12} color="var(--cw-accent)" />
-              <span>STATS &amp; WRAPPED</span>
-            </div>
+              <span>STATS</span>
+              <span className="cw-sidebar-widget-arrow" aria-hidden="true">›</span>
+            </span>
             <span className="cw-sidebar-widget-pill">{listenLabel}</span>
           </div>
 
@@ -557,8 +560,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             <button
               type="button"
               className="cw-sidebar-quick-btn cw-tip-anchor"
-              data-tip={`10-Band EQ (${eqPreset})`}
-              data-active={eqPreset !== 'Flat'}
+              data-eq-trigger="true"
+              data-tip={eqOpen ? 'Close Equalizer' : `10-Band EQ (${eqPreset})`}
+              data-active={eqOpen || eqPreset !== 'Flat'}
               onClick={onOpenEq}
             >
               <Sliders size={13} />

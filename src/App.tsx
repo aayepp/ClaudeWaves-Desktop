@@ -80,6 +80,7 @@ import { NowPlayingSheet, type SheetOrigin } from './components/NowPlayingSheet'
 import { PlayerDock } from './components/PlayerDock';
 import { PlaylistView } from './components/PlaylistView';
 import { ProfileModal } from './components/ProfileModal';
+import { QuickEqPopover } from './components/QuickEqPopover';
 import { RightSidePanel } from './components/RightSidePanel';
 import { SettingsView, type SettingsTab } from './components/SettingsView';
 import { Sidebar, type SidebarRoute } from './components/Sidebar';
@@ -283,6 +284,9 @@ export const App: React.FC = () => {
   const [ambientModeOpen, setAmbientModeOpen] = useState(false);
   const ambientModeRef = useRef(ambientModeOpen);
   ambientModeRef.current = ambientModeOpen;
+  const [eqPopupOpen, setEqPopupOpen] = useState(false);
+  const eqPopupOpenRef = useRef(eqPopupOpen);
+  eqPopupOpenRef.current = eqPopupOpen;
 
   // Offline downloads store
   const [offlineEntries, setOfflineEntries] = useState<OfflineTrackEntry[]>([]);
@@ -849,8 +853,7 @@ export const App: React.FC = () => {
     });
   }, []);
   const handleOpenEq = useCallback(() => {
-    setSettingsTab('audio');
-    setRoute({ kind: 'settings' });
+    setEqPopupOpen((prev) => !prev);
   }, []);
   const handleCycleSleepTimer = useCallback(() => {
     const rem = playerStateRef.current.sleepRemainingSec;
@@ -1108,6 +1111,11 @@ export const App: React.FC = () => {
   // Global keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && eqPopupOpenRef.current) {
+        e.preventDefault();
+        setEqPopupOpen(false);
+        return;
+      }
       if (e.key === 'Escape' && ambientModeRef.current) {
         e.preventDefault();
         handleCloseAmbientMode();
@@ -1764,6 +1772,7 @@ export const App: React.FC = () => {
           playlists={library.playlists}
           stats={library.stats}
           eqPreset={settings.eqPreset}
+          eqOpen={eqPopupOpen}
           autoRadio={settings.autoRadio}
           sleepRemainingSec={player.state.sleepRemainingSec}
           intensity={intensity}
@@ -3005,6 +3014,16 @@ export const App: React.FC = () => {
         onSeekTo={player.seekTo}
         onToggleLike={handleToggleLikeCurrent}
         onClose={handleCloseAmbientMode}
+      />
+
+      {/* Quick Toggleable Equalizer & DSP Popover */}
+      <QuickEqPopover
+        open={eqPopupOpen}
+        settings={settings}
+        accentHex={activeAccent}
+        intensity={intensity}
+        onUpdate={updateSettings}
+        onClose={() => setEqPopupOpen(false)}
       />
 
       {/* Android 1:1 Splash Screen + 5-Step Onboarding Wizard */}

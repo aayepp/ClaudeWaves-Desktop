@@ -184,6 +184,7 @@ function getLyricsOverlayHtml() {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<title></title>
 <style>
   * { box-sizing: border-box; user-select: none; }
   html, body {
@@ -191,11 +192,11 @@ function getLyricsOverlayHtml() {
     overflow: hidden; background: transparent;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
   }
-  body { display: flex; flex-direction: column; padding: 6px 8px; }
+  body { display: flex; flex-direction: column; padding: 4px; }
   .wrap {
     flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;
-    border-radius: 14px; padding: 8px 14px;
-    background: rgba(10, 12, 18, 0.72);
+    border-radius: 14px; padding: 26px 18px 14px;
+    background: rgba(10, 12, 18, 0.76);
     border: 1px solid rgba(255, 255, 255, 0.14);
     backdrop-filter: blur(16px);
     transition: background 180ms ease, border-color 180ms ease;
@@ -318,28 +319,34 @@ function openLyricsOverlay() {
     return;
   }
   const wa = screen.getPrimaryDisplay().workArea;
-  const w = 720;
-  const h = 138;
+  const w = 740;
+  const h = 148;
   lyricsOverlayWin = new BrowserWindow({
     width: w,
     height: h,
-    minWidth: 400,
-    minHeight: 92,
     x: Math.round(wa.x + (wa.width - w) / 2),
     y: Math.round(wa.y + wa.height - h - 36),
+    title: '',
     frame: false,
+    thickFrame: false,
     transparent: true,
     backgroundColor: '#00000000',
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,
-    resizable: true,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
   });
+  lyricsOverlayWin.setMenu(null);
+  lyricsOverlayWin.setMenuBarVisibility(false);
   lyricsOverlayWin.setAlwaysOnTop(true, 'screen-saver');
   lyricsOverlayWin.webContents.on('did-finish-load', () => {
     pushLyricsToOverlay(lastLyricsState);
