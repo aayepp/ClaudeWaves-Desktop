@@ -188,7 +188,7 @@ const AmbientLyricStack: React.FC<{
   );
 });
 
-const BAND_COUNT = 48;
+const BAND_COUNT = 64;
 
 interface NebulaStar {
   x: number;
@@ -216,13 +216,24 @@ function createNebulaStars(count: number): NebulaStar[] {
   return out;
 }
 
-/** Sample N logarithmically-spaced bands across usable spectrum so low/mid/high stay balanced. */
-function sampleLogSpectrum(
+interface BeatTrackingState {
+  bassAvg: number;
+  energyAvg: number;
+  beatPunch: number;
+}
+
+/**
+ * Sample 64 exponential-spaced FFT bands with adaptive floor subtraction,
+ * contrast expansion, and kick-drum transient detection for lively beat motion.
+ */
+function sampleBeatSpectrum(
   freqData: Uint8Array | null,
   smooth: Float32Array,
+  prevRaw: Float32Array,
+  beatState: BeatTrackingState,
   isPlaying: boolean,
   timeSec: number,
-): number {
+): { bass: number; beatPunch: number } {
   let hasLiveSignal = false;
   if (freqData && freqData.length > 0 && isPlaying) {
     let peak = 0;
@@ -233,47 +244,79 @@ function sampleLogSpectrum(
     hasLiveSignal = peak > 4;
   }
 
-  let bassSum = 0;
-  const usableBins = freqData ? Math.max(24, Math.floor(freqData.length * 0.58)) : 64;
-  const minLog = Math.log(1);
-  const maxLog = Math.log(usableBins);
+  let bassNow = 0;
+  let frameEnergy = 0;
 
-  for (let i = 0; i < BAND_COUNT; i++) {
-    let target = 0.03;
-    if (isPlaying) {
-      if (hasLiveSignal && freqData) {
-        const t0 = i / BAND_COUNT;
-        const t1 = (i + 1) / BAND_COUNT;
-        const binStart = Math.max(1, Math.floor(Math.exp(minLog + (maxLog - minLog) * t0)));
-        const binEnd = Math.max(
-          binStart + 1,
-          Math.min(usableBins, Math.ceil(Math.exp(minLog + (maxLog - minLog) * t1))),
-        );
-        let sum = 0;
-        let count = 0;
-        for (let b = binStart; b < binEnd; b++) {
-          sum += freqData[b];
-          count++;
-        }
-        const raw = count > 0 ? sum / count / 255 : 0;
-        const trebleLift = 1 + t0 * 0.58;
-        target = Math.min(1, Math.max(0.05, Math.pow(raw * trebleLift, 0.84)));
-      } else {
-        // Organic harmonic motion fallback when stream telemetry is silenced by CORS
-        const env = 1 - (i / BAND_COUNT) * 0.45;
-        const wave =
-          0.26 +
-          0.24 * Math.sin(timeSec * 2.4 + i * 0.24) +
-          0.16 * Math.cos(timeSec * 3.9 - i * 0.41);
-        target = Math.max(0.06, Math.min(0.92, wave * env));
-      }
+  if (isPlaying && hasLiveSignal && freqData) {
+    const maxBin = Math.min(freqData.length - 1, 148);
+    // Pass 1: interpolated exponential bin sampling + kick energy
+    const rawBands = new Float32Array(BAND_COUNT);
+    for (let i = 0; i < BAND_COUNT; i++) {
+      const t = i / (BAND_COUNT - 1);
+      const fBin = 1 + Math.pow(t, 1.55) * (maxBin - 1);
+      const b0 = Math.floor(fBin);
+      const b1 = Math.min(maxBin, b0 + 1);
+      const frac = fBin - b0;
+      const interp = (freqData[b0] * (1 - frac) + freqData[b1] * frac) / 255;
+      const eqTilt = 0.88 + t * 0.48;
+      const val = Math.min(1, interp * eqTilt);
+      rawBands[i] = val;
+      frameEnergy += val;
+      if (i < 6) bassNow += val;
     }
-    const prev = smooth[i];
-    smooth[i] = target > prev ? prev + (target - prev) * 0.38 : prev * 0.89;
-    if (i < 6) bassSum += smooth[i];
+    bassNow /= 6;
+    frameEnergy /= BAND_COUNT;
+
+    beatState.bassAvg = beatState.bassAvg * 0.92 + bassNow * 0.08;
+    beatState.energyAvg = beatState.energyAvg * 0.94 + frameEnergy * 0.06;
+    const kickDelta = Math.max(0, bassNow - beatState.bassAvg * 1.03);
+    beatState.beatPunch = Math.min(1, Math.max(beatState.beatPunch * 0.82, kickDelta * 4.8));
+
+    const floor = Math.min(0.46, beatState.energyAvg * 0.55);
+    const invSpan = 1 / Math.max(0.25, 1 - floor);
+
+    for (let i = 0; i < BAND_COUNT; i++) {
+      const raw = rawBands[i];
+      const transient = Math.max(0, raw - prevRaw[i]) * 2.0;
+      prevRaw[i] = raw;
+      const gated = Math.max(0, Math.min(1, (raw - floor) * invSpan));
+      // Expand dynamic contrast so peaks spike sharply while valleys breathe
+      const shaped = Math.pow(gated, 1.85) + transient * 0.55;
+      const target = Math.min(1, Math.max(0.03, shaped));
+      const cur = smooth[i];
+      smooth[i] = target > cur ? cur + (target - cur) * 0.56 : cur * 0.82;
+    }
+  } else {
+    const pulse = isPlaying ? Math.pow(Math.max(0, Math.sin(timeSec * 3.4)), 4) : 0;
+    beatState.bassAvg = beatState.bassAvg * 0.9;
+    beatState.energyAvg = beatState.energyAvg * 0.9;
+    beatState.beatPunch = isPlaying
+      ? Math.min(1, Math.max(beatState.beatPunch * 0.84, pulse * 0.85))
+      : beatState.beatPunch * 0.82;
+
+    for (let i = 0; i < BAND_COUNT; i++) {
+      let target = 0.02;
+      if (isPlaying) {
+        const u = i / BAND_COUNT;
+        const kickRipple = pulse * (1 - u * 0.72) * 0.62;
+        const harmonic =
+          0.14 +
+          0.22 * Math.pow(Math.abs(Math.sin(timeSec * 2.7 + i * 0.34)), 1.6) +
+          0.15 * Math.pow(Math.abs(Math.cos(timeSec * 4.2 - i * 0.51)), 2);
+        target = Math.min(0.95, kickRipple + harmonic * (1 - u * 0.35));
+      }
+      prevRaw[i] = target;
+      const cur = smooth[i];
+      smooth[i] = target > cur ? cur + (target - cur) * 0.52 : cur * 0.84;
+      if (i < 6) bassNow += smooth[i];
+    }
+    bassNow /= 6;
   }
 
-  return bassSum / 6;
+  return {
+    bass: bassNow,
+    beatPunch: beatState.beatPunch,
+  };
 }
 
 export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
@@ -298,6 +341,9 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const haloAnchorRef = useRef<HTMLDivElement | null>(null);
   const smoothBandsRef = useRef<Float32Array>(new Float32Array(BAND_COUNT));
+  const prevRawRef = useRef<Float32Array>(new Float32Array(BAND_COUNT));
+  const beatStateRef = useRef<BeatTrackingState>({ bassAvg: 0.18, energyAvg: 0.2, beatPunch: 0 });
+  const haloAngleRef = useRef(0);
   const starsRef = useRef<NebulaStar[]>(createNebulaStars(58));
 
   const [hudVisible, setHudVisible] = useState(true);
@@ -358,11 +404,31 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
     if (!ctx) return;
 
     let rafId = 0;
+    let lastTs = performance.now();
     let freqData: Uint8Array | null = null;
     let timeData: Uint8Array | null = null;
     const bands = smoothBandsRef.current;
+    const prevRaw = prevRawRef.current;
+    const beatState = beatStateRef.current;
     const stars = starsRef.current;
     const safeColor = /^#[0-9a-fA-F]{6}$/.test(waveColorHex) ? waveColorHex : '#38BDF8';
+
+    // Temporarily boost AnalyserNode resolution while Ambient Studio is open, then restore
+    const initAnalyser = analyserRef.current;
+    const savedAnalyser = initAnalyser
+      ? {
+          fftSize: initAnalyser.fftSize,
+          smoothingTimeConstant: initAnalyser.smoothingTimeConstant,
+          minDecibels: initAnalyser.minDecibels,
+          maxDecibels: initAnalyser.maxDecibels,
+        }
+      : null;
+    if (initAnalyser) {
+      initAnalyser.fftSize = 512;
+      initAnalyser.smoothingTimeConstant = 0.52;
+      initAnalyser.minDecibels = -72;
+      initAnalyser.maxDecibels = -12;
+    }
 
     const drawAuroraSilk = (cw: number, ch: number, dpr: number, t: number, bass: number) => {
       const baseH = ch * 0.16;
@@ -424,18 +490,26 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
       });
     };
 
-    const drawRadialHalo = (cw: number, ch: number, dpr: number, t: number, bass: number) => {
-      // Drifting nebula bokeh particles
+    const drawRadialHalo = (
+      cw: number,
+      ch: number,
+      dpr: number,
+      t: number,
+      dt: number,
+      bass: number,
+      beatPunch: number,
+    ) => {
+      // Drifting nebula bokeh particles accelerated subtly by beats
       for (const s of stars) {
         if (player.isPlaying) {
-          s.x = (s.x + s.vx * (1 + bass * 3.2) + 1) % 1;
-          s.y = (s.y + s.vy * (1 + bass * 3.2) + 1) % 1;
+          s.x = (s.x + s.vx * (1 + bass * 2.4 + beatPunch * 3.8) + 1) % 1;
+          s.y = (s.y + s.vy * (1 + bass * 2.4 + beatPunch * 3.8) + 1) % 1;
         }
-        const twinkle = 0.6 + 0.4 * Math.sin(t * 1.4 + s.phase);
-        const alpha = s.alpha * twinkle * (0.75 + bass * 0.5);
+        const twinkle = 0.55 + 0.45 * Math.sin(t * 1.6 + s.phase);
+        const alpha = Math.min(1, s.alpha * twinkle * (0.72 + beatPunch * 0.65));
         ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
         ctx.beginPath();
-        ctx.arc(s.x * cw, s.y * ch, s.r * dpr * (1 + bass * 0.45), 0, Math.PI * 2);
+        ctx.arc(s.x * cw, s.y * ch, s.r * dpr * (1 + beatPunch * 0.7), 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -454,29 +528,36 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
         }
       }
 
-      // Subtle atmospheric aura glow around halo center
-      const aura = ctx.createRadialGradient(cx, cy, baseR * 0.65, cx, cy, baseR + 140 * dpr);
-      aura.addColorStop(0, `${safeColor}${Math.round(35 + bass * 55).toString(16).padStart(2, '0')}`);
-      aura.addColorStop(0.55, 'rgba(139, 92, 246, 0.14)');
+      // Beat-reactive aura glow around halo center
+      const glowSpan = (120 + beatPunch * 75) * dpr;
+      const aura = ctx.createRadialGradient(cx, cy, baseR * 0.68, cx, cy, baseR + glowSpan);
+      aura.addColorStop(0, `${safeColor}${Math.round(42 + beatPunch * 80).toString(16).padStart(2, '0')}`);
+      aura.addColorStop(0.55, `rgba(139, 92, 246, ${(0.14 + beatPunch * 0.22).toFixed(2)})`);
       aura.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = aura;
       ctx.beginPath();
-      ctx.arc(cx, cy, baseR + 140 * dpr, 0, Math.PI * 2);
+      ctx.arc(cx, cy, baseR + glowSpan, 0, Math.PI * 2);
       ctx.fill();
 
-      // 360-degree symmetrical radial bars (mirrored left-to-right from top 12 o'clock)
-      const totalBars = 96;
-      const half = totalBars / 2;
-      const maxLen = Math.min(cw, ch) * 0.095;
+      // Advance slow orbital rotation with beat momentum
+      if (player.isPlaying) {
+        haloAngleRef.current += dt * (0.14 + beatPunch * 0.7);
+      }
+
+      // 80 crisp slender radial bars with 4-quadrant mirrored symmetry & strong beat spikes
+      const totalBars = 80;
+      const sector = totalBars / 4; // 20 bars per quadrant
+      const maxLen = Math.min(cw, ch) * 0.082;
       ctx.lineCap = 'round';
-      ctx.lineWidth = Math.max(2.4 * dpr, ((2 * Math.PI * baseR) / totalBars) * 0.5);
+      ctx.lineWidth = Math.max(2.0 * dpr, ((2 * Math.PI * baseR) / totalBars) * 0.42);
 
       for (let i = 0; i < totalBars; i++) {
-        const mirrorIdx = i < half ? i : totalBars - 1 - i;
-        const bandIdx = Math.min(BAND_COUNT - 1, Math.floor((mirrorIdx / half) * (BAND_COUNT * 0.85)));
+        const posInSector = i % sector;
+        const mirrorPos = Math.floor(i / sector) % 2 === 0 ? posInSector : sector - 1 - posInSector;
+        const bandIdx = Math.min(BAND_COUNT - 1, Math.floor((mirrorPos / sector) * (BAND_COUNT * 0.92)));
         const val = bands[bandIdx];
-        const barLen = 8 * dpr + val * maxLen;
-        const angle = -Math.PI * 0.5 + (i / totalBars) * Math.PI * 2;
+        const barLen = 4 * dpr + Math.pow(val, 1.25) * maxLen * (0.78 + beatPunch * 0.52);
+        const angle = haloAngleRef.current - Math.PI * 0.5 + (i / totalBars) * Math.PI * 2;
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
         const rIn = baseR;
@@ -499,74 +580,99 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
       }
     };
 
-    const drawDualMirrorWave = (cw: number, ch: number, dpr: number, t: number, bass: number) => {
+    const drawDualMirrorWave = (
+      cw: number,
+      ch: number,
+      dpr: number,
+      t: number,
+      bass: number,
+      beatPunch: number,
+    ) => {
       const centerX = cw * 0.5;
       const horizonY = ch * 0.5;
-      const maxBarH = ch * 0.39;
+      const maxBarH = ch * 0.41;
 
       // Razor horizon line
       const lineGrad = ctx.createLinearGradient(0, horizonY, cw, horizonY);
       lineGrad.addColorStop(0, 'rgba(255,255,255,0)');
       lineGrad.addColorStop(0.2, `${safeColor}88`);
-      lineGrad.addColorStop(0.5, '#ffffffaa');
+      lineGrad.addColorStop(0.5, '#ffffffbb');
       lineGrad.addColorStop(0.8, '#ec489988');
       lineGrad.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = lineGrad;
       ctx.fillRect(0, horizonY - 0.75 * dpr, cw, 1.5 * dpr);
 
-      // Symmetrical bars expanding center -> left and center -> right, mirrored top + bottom
-      const halfBars = 36;
-      const slotW = (cw * 0.47) / halfBars;
-      const barW = Math.max(2 * dpr, slotW * 0.54);
+      // 64 slim tapered needles per half (128 total) mirrored horizontally + vertically
+      const halfBars = 64;
+      const slotW = (cw * 0.46) / halfBars;
+      const barW = Math.max(1.6 * dpr, slotW * 0.42);
       const radius = barW * 0.5;
 
       const paletteGrad = ctx.createLinearGradient(0, horizonY, cw, horizonY);
-      paletteGrad.addColorStop(0.05, `${safeColor}bb`);
+      paletteGrad.addColorStop(0.06, `${safeColor}b8`);
       paletteGrad.addColorStop(0.5, '#ffffff');
-      paletteGrad.addColorStop(0.95, '#ec4899bb');
+      paletteGrad.addColorStop(0.94, '#ec4899b8');
+      ctx.fillStyle = paletteGrad;
 
       for (let i = 0; i < halfBars; i++) {
-        const bandIdx = Math.min(BAND_COUNT - 1, Math.floor((i / halfBars) * (BAND_COUNT * 0.9)));
-        const taper = 1 - (i / halfBars) * 0.32;
-        const amp = Math.max(0.04, bands[bandIdx] * taper);
-        const h = Math.max(3 * dpr, amp * maxBarH);
+        const u = i / halfBars;
+        const bandIdx = Math.min(BAND_COUNT - 1, Math.floor(u * (BAND_COUNT - 1)));
+        // Taper envelope so center bass towers tall while edges thin down cleanly
+        const env = Math.pow(1 - u, 1.65) * 0.94 + 0.04;
+        const beatBoost = i < 14 ? 1 + beatPunch * 0.35 : 1;
+        const energy = bands[bandIdx] * env * beatBoost;
+        const h = Math.max(2 * dpr, Math.min(maxBarH, energy * maxBarH + 2 * dpr));
         const offset = (i + 0.5) * slotW;
 
-        ctx.fillStyle = paletteGrad;
-        const drawMirroredBar = (bx: number) => {
-          ctx.beginPath();
-          ctx.roundRect(bx - barW * 0.5, horizonY - h, barW, h * 2, radius);
-          ctx.fill();
-        };
-        drawMirroredBar(centerX + offset);
-        drawMirroredBar(centerX - offset);
+        ctx.beginPath();
+        ctx.roundRect(centerX + offset - barW * 0.5, horizonY - h, barW, h * 2, radius);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.roundRect(centerX - offset - barW * 0.5, horizonY - h, barW, h * 2, radius);
+        ctx.fill();
       }
 
-      // Analog oscilloscope ribbon across center horizon
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.lineWidth = 1.75 * dpr;
-      ctx.beginPath();
-      const samples = 160;
-      const hasTimeWave = Boolean(timeData && timeData.length > 0 && player.isPlaying);
-      for (let s = 0; s <= samples; s++) {
-        const u = s / samples;
-        const env = Math.sin(u * Math.PI);
+      // Silky 44-point Quadratic Bezier analog oscilloscope wave
+      const pointCount = 44;
+      const pts: Array<{ x: number; y: number }> = [];
+      const hasTimeWave = Boolean(timeData && timeData.length > 4 && player.isPlaying);
+
+      for (let s = 0; s <= pointCount; s++) {
+        const u = s / pointCount;
+        const edgeEnv = Math.sin(u * Math.PI);
         let v = 0;
         if (hasTimeWave && timeData) {
-          const ti = Math.min(timeData.length - 1, Math.floor(u * timeData.length));
-          v = (timeData[ti] - 128) / 128;
+          const ti = Math.min(timeData.length - 2, Math.max(1, Math.floor(u * (timeData.length - 1))));
+          const avg = ((timeData[ti - 1] + timeData[ti] + timeData[ti + 1]) / 3 - 128) / 128;
+          v = avg * (1.25 + beatPunch * 0.45);
         } else if (player.isPlaying) {
           v =
-            (Math.sin(u * Math.PI * 6 - t * 4.2) * 0.55 +
-              Math.cos(u * Math.PI * 11 + t * 2.7) * 0.35) *
-            (0.25 + bass * 0.65);
+            (Math.sin(u * Math.PI * 5 - t * 4.4) * 0.58 +
+              Math.cos(u * Math.PI * 9 + t * 2.9) * 0.34) *
+            (0.28 + bass * 0.5 + beatPunch * 0.35);
         }
-        const y = horizonY + v * (ch * 0.16) * env;
-        const x = u * cw;
-        if (s === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        pts.push({
+          x: u * cw,
+          y: horizonY + Math.max(-0.95, Math.min(0.95, v)) * (ch * 0.19) * edgeEnv,
+        });
       }
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+      ctx.lineWidth = 1.9 * dpr;
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.55)';
+      ctx.shadowBlur = 8 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length - 1; i++) {
+        const xc = (pts[i].x + pts[i + 1].x) * 0.5;
+        const yc = (pts[i].y + pts[i + 1].y) * 0.5;
+        ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+      }
+      ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
       ctx.stroke();
+      ctx.restore();
     };
 
     const renderFrame = (ts: number) => {
@@ -592,21 +698,31 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
         }
       }
 
+      const dt = Math.min(0.05, Math.max(0.004, (ts - lastTs) / 1000));
+      lastTs = ts;
       const timeSec = ts * 0.001;
-      const bass = sampleLogSpectrum(freqData, bands, player.isPlaying, timeSec);
+      const { bass, beatPunch } = sampleBeatSpectrum(
+        freqData,
+        bands,
+        prevRaw,
+        beatState,
+        player.isPlaying,
+        timeSec,
+      );
       if (rootRef.current) {
         rootRef.current.style.setProperty('--cw-bass', bass.toFixed(3));
+        rootRef.current.style.setProperty('--cw-beat', beatPunch.toFixed(3));
       }
 
       if (preset === 'aurora') {
         drawAuroraSilk(cw, ch, dpr, timeSec, bass);
       } else if (preset === 'halo') {
-        drawRadialHalo(cw, ch, dpr, timeSec, bass);
+        drawRadialHalo(cw, ch, dpr, timeSec, dt, bass, beatPunch);
       } else if (preset === 'wave') {
-        drawDualMirrorWave(cw, ch, dpr, timeSec, bass);
+        drawDualMirrorWave(cw, ch, dpr, timeSec, bass, beatPunch);
       }
 
-      const stillSettling = bands.some((v) => v > 0.015);
+      const stillSettling = bands.some((v) => v > 0.015) || beatPunch > 0.02;
       if (player.isPlaying || stillSettling || preset === 'halo') {
         rafId = requestAnimationFrame(renderFrame);
       }
@@ -615,6 +731,12 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
     rafId = requestAnimationFrame(renderFrame);
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
+      if (initAnalyser && savedAnalyser) {
+        initAnalyser.fftSize = savedAnalyser.fftSize;
+        initAnalyser.smoothingTimeConstant = savedAnalyser.smoothingTimeConstant;
+        initAnalyser.minDecibels = savedAnalyser.minDecibels;
+        initAnalyser.maxDecibels = savedAnalyser.maxDecibels;
+      }
     };
   }, [open, preset, player.isPlaying, analyserRef, waveColorHex]);
 

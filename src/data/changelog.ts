@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.2';
+export const APP_VERSION = '1.4.3';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,16 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.3',
+    date: '2026-11-22',
+    summary: 'Beat-Reactive Ambient Engine: kick-transient Halo spikes with orbital momentum + slim tapered Dual-Mirror Studio needles & smooth Bezier oscilloscope.',
+    fixed: [
+      'Upgraded Ambient AnalyserNode resolution (512 FFT) with adaptive loudness floor subtraction and contrast expansion so Halo radial spikes react crisply to drum beats instead of plateauing.',
+      'Increased Halo title clearance and added cover beat pulse so radial spikes stay completely clear of the track title.',
+      'Replaced wide boxy bars in Studio Wave with 128 razor-slim tapered frequency needles and a smooth 44-point quadratic Bezier oscilloscope trace.',
+    ],
+  },
   {
     version: '1.4.2',
     date: '2026-11-22',

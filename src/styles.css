@@ -9060,6 +9060,8 @@ html[data-skin='nothing'] .cw-draggable-section {
   padding: 5px;
   background: rgba(255, 255, 255, 0.08);
   box-shadow: 0 20px 64px rgba(0, 0, 0, 0.72);
+  transform: scale(calc(1 + var(--cw-beat, 0) * 0.065));
+  transition: transform 65ms linear;
 }
 
 .cw-amb-halo-cover {
@@ -9070,7 +9072,7 @@ html[data-skin='nothing'] .cw-draggable-section {
 }
 
 .cw-amb-halo-meta {
-  margin-top: clamp(72px, 10vh, 110px);
+  margin-top: clamp(96px, 13vh, 140px);
   display: flex;
   flex-direction: column;
   align-items: center;
