@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.9';
+export const APP_VERSION = '1.4.10';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,17 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.10',
+    date: '2026-11-23',
+    summary: 'Launch Splash Screen Polish: eliminated background gradient ring halo and refined splash proportions to a sleeker desktop scale.',
+    changed: [
+      'Refined desktop splash scale unit (0.92 max -> 0.62 max) for cleaner launch framing without oversized artwork.',
+    ],
+    fixed: [
+      'Fixed Canvas radial gradient transparent-to-black ring halo and mid-screen mist cutoff by expanding the backdrop mist radius and using smooth matching-RGB multi-stop radial falloffs.',
+    ],
+  },
   {
     version: '1.4.9',
     date: '2026-11-23',

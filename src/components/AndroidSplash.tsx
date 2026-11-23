@@ -183,7 +183,28 @@ function roundRectPath(
 }
 
 const splashUnit = (w: number, h: number) =>
-  Math.min(0.92, (Math.min(w, h) / 640) * 0.65);
+  Math.min(0.62, (Math.min(w, h) / 640) * 0.46);
+
+function fillSmoothRadialGlow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  hex: string,
+  peakAlpha: number,
+  w: number,
+  h: number,
+) {
+  if (radius <= 1 || peakAlpha <= 0.002) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  g.addColorStop(0, rgba(hex, peakAlpha));
+  g.addColorStop(0.28, rgba(hex, peakAlpha * 0.65));
+  g.addColorStop(0.56, rgba(hex, peakAlpha * 0.25));
+  g.addColorStop(0.82, rgba(hex, peakAlpha * 0.05));
+  g.addColorStop(1, rgba(hex, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+}
 
 function traceOrganicBlob(
   ctx: CanvasRenderingContext2D,
@@ -461,7 +482,7 @@ export const AndroidSplash: React.FC<AndroidSplashProps> = ({ open, onDone }) =>
       );
       gTop.addColorStop(0, rgba(PORTAL_COBALT, 0.46));
       gTop.addColorStop(0.65, rgba(PORTAL_CYAN, 0.22));
-      gTop.addColorStop(1, 'transparent');
+      gTop.addColorStop(1, rgba(PORTAL_CYAN, 0));
       ctx.fillStyle = gTop;
       ctx.fillRect(orbCx - radius, orbCy - radius, radius * 2, radius * 2);
 
@@ -475,7 +496,7 @@ export const AndroidSplash: React.FC<AndroidSplashProps> = ({ open, onDone }) =>
       );
       gBot.addColorStop(0, rgba(PORTAL_VIOLET, 0.42));
       gBot.addColorStop(0.65, rgba(PORTAL_ROSE, 0.22));
-      gBot.addColorStop(1, 'transparent');
+      gBot.addColorStop(1, rgba(PORTAL_ROSE, 0));
       ctx.fillStyle = gBot;
       ctx.fillRect(orbCx - radius, orbCy - radius, radius * 2, radius * 2);
 
@@ -881,10 +902,11 @@ export const AndroidSplash: React.FC<AndroidSplashProps> = ({ open, onDone }) =>
       const drawMistBase = () => {
         ctx.fillStyle = MIST_EDGE;
         ctx.fillRect(0, 0, w, h);
-        const mistGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 560 * unit);
+        const mistGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(w, h) * 0.65);
         mistGrad.addColorStop(0, MIST_CENTER);
-        mistGrad.addColorStop(0.68, rgba(MIST_CENTER, 0.55));
-        mistGrad.addColorStop(1, 'transparent');
+        mistGrad.addColorStop(0.35, rgba(MIST_CENTER, 0.72));
+        mistGrad.addColorStop(0.7, rgba(MIST_CENTER, 0.26));
+        mistGrad.addColorStop(1, rgba(MIST_CENTER, 0));
         ctx.fillStyle = mistGrad;
         ctx.fillRect(0, 0, w, h);
       };
@@ -894,17 +916,8 @@ export const AndroidSplash: React.FC<AndroidSplashProps> = ({ open, onDone }) =>
         ctx.fillRect(0, 0, w, h);
         const iconWashAlpha = splashSmoothstep(0.002, 0.04, p);
         if (iconWashAlpha > 0.005) {
-          const g1 = ctx.createRadialGradient(w * 0.25, h * 0.3, 0, w * 0.25, h * 0.3, w * 0.65);
-          g1.addColorStop(0, rgba(PORTAL_COBALT, 0.26 * iconWashAlpha));
-          g1.addColorStop(1, 'transparent');
-          ctx.fillStyle = g1;
-          ctx.fillRect(0, 0, w, h);
-
-          const g2 = ctx.createRadialGradient(w * 0.75, h * 0.7, 0, w * 0.75, h * 0.7, w * 0.65);
-          g2.addColorStop(0, rgba(PORTAL_VIOLET, 0.22 * iconWashAlpha));
-          g2.addColorStop(1, 'transparent');
-          ctx.fillStyle = g2;
-          ctx.fillRect(0, 0, w, h);
+          fillSmoothRadialGlow(ctx, w * 0.25, h * 0.3, Math.max(w, h) * 0.78, PORTAL_COBALT, 0.24 * iconWashAlpha, w, h);
+          fillSmoothRadialGlow(ctx, w * 0.75, h * 0.7, Math.max(w, h) * 0.78, PORTAL_VIOLET, 0.2 * iconWashAlpha, w, h);
         }
 
         const irisT = splashSmootherstep(0.012, 0.092, p);
@@ -936,33 +949,20 @@ export const AndroidSplash: React.FC<AndroidSplashProps> = ({ open, onDone }) =>
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, w, h);
 
-      const gTop = ctx.createRadialGradient(w * 0.22, h * 0.3, 0, w * 0.22, h * 0.3, w * 0.72);
-      gTop.addColorStop(0, rgba(PORTAL_COBALT, 0.3));
-      gTop.addColorStop(1, 'transparent');
-      ctx.fillStyle = gTop;
-      ctx.fillRect(0, 0, w, h);
-
-      const gBot = ctx.createRadialGradient(w * 0.78, h * 0.72, 0, w * 0.78, h * 0.72, w * 0.72);
-      gBot.addColorStop(0, rgba(PORTAL_VIOLET, 0.28));
-      gBot.addColorStop(1, 'transparent');
-      ctx.fillStyle = gBot;
-      ctx.fillRect(0, 0, w, h);
+      fillSmoothRadialGlow(ctx, w * 0.22, h * 0.3, Math.max(w, h) * 0.88, PORTAL_COBALT, 0.22, w, h);
+      fillSmoothRadialGlow(ctx, w * 0.78, h * 0.72, Math.max(w, h) * 0.88, PORTAL_VIOLET, 0.2, w, h);
 
       if (p >= 0.635) {
         const ga = splashSmoothstep(0.635, 0.79, p) * 0.24;
         const glowCy = cy - 79.4 * unit;
         const pts: Array<[number, number, number, string, number]> = [
-          [cx, glowCy - 36 * unit, 185 * unit, PORTAL_COBALT, ga],
-          [cx - 48 * unit, glowCy, 165 * unit, PORTAL_CYAN, ga * 0.85],
-          [cx + 36 * unit, glowCy, 175 * unit, PORTAL_VIOLET, ga * 0.9],
-          [cx, glowCy + 42 * unit, 165 * unit, PORTAL_ROSE, ga * 0.85],
+          [cx, glowCy - 36 * unit, 210 * unit, PORTAL_COBALT, ga * 0.78],
+          [cx - 48 * unit, glowCy, 195 * unit, PORTAL_CYAN, ga * 0.68],
+          [cx + 36 * unit, glowCy, 205 * unit, PORTAL_VIOLET, ga * 0.72],
+          [cx, glowCy + 42 * unit, 195 * unit, PORTAL_ROSE, ga * 0.68],
         ];
         for (const [gx, gy, gr, gcol, alpha] of pts) {
-          const rad = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
-          rad.addColorStop(0, rgba(gcol, alpha));
-          rad.addColorStop(1, 'transparent');
-          ctx.fillStyle = rad;
-          ctx.fillRect(0, 0, w, h);
+          fillSmoothRadialGlow(ctx, gx, gy, gr, gcol, alpha, w, h);
         }
       }
 
@@ -1027,13 +1027,6 @@ export const AndroidSplash: React.FC<AndroidSplashProps> = ({ open, onDone }) =>
         drawDarkAuroraStage(p, w, h, cx, cy, unit);
       } else {
         // Light stage outside organic blob, Midnight Aurora stage inside blob (Reverse-XOR)
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, w, h);
-        traceOrganicBlob(ctx, w, h, cx, blobP);
-        // Combine outer rect and inner blob cleanly using evenodd clipping for outside region
-        ctx.restore();
-
         // Draw outside region with evenodd rule:
         ctx.save();
         ctx.beginPath();
