@@ -1,7 +1,7 @@
 {
   "name": "claudewaves-desktop",
   "private": true,
-  "version": "1.4.8",
+  "version": "1.4.9",
   "description": "ClaudeWaves Desktop — Apple-style Liquid Glass YouTube Music Client",
   "author": "aayepp",
   "main": "electron/main.cjs",

@@ -54,6 +54,31 @@ export async function romanizeLyricsApi(
   }
 }
 
+export async function translateLyricsApi(
+  trackId: string,
+  lines: string[],
+  targetLang: 'ms' | 'en',
+): Promise<Array<string | null> | null> {
+  try {
+    const res = await fetch('/api/lyrics/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trackId, lines, targetLang }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      status?: string;
+      subLines?: Array<string | null>;
+    };
+    if (data.status === 'ok' && Array.isArray(data.subLines)) {
+      return data.subLines;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Layer-3 Best Part fallback ported from ClaudeWaves Android BestPart.kt:
  * finds the first chorus by detecting substantive lyric lines repeated across

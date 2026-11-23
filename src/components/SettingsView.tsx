@@ -999,6 +999,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         onChange={(checked) => onUpdate({ lyricsAutoRomanize: checked })}
                       />
                     </div>
+
+                    <div>
+                      <div className="cw-muted" style={{ marginBottom: 6, fontSize: 11.5 }}>
+                        Lyrics Translation Language
+                      </div>
+                      <div className="cw-chips">
+                        {(
+                          [
+                            ['off', 'Off'],
+                            ['ms', 'Bahasa Melayu (BM)'],
+                            ['en', 'English (EN)'],
+                          ] as const
+                        ).map(([code, label]) => (
+                          <button
+                            key={code}
+                            type="button"
+                            className="cw-mood-chip"
+                            style={{ padding: '5px 11px', fontSize: 12 }}
+                            data-active={settings.lyricsTranslateLang === code}
+                            onClick={() => onUpdate({ lyricsTranslateLang: code })}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1085,6 +1111,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         tint={accentHex}
                         intensity={settings.glassIntensity}
                         onChange={(checked) => onUpdate({ globalMediaKeys: checked })}
+                      />
+                    </div>
+
+                    <div className="cw-setting-row" style={{ padding: '2px 0' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>Smart Fade Play/Pause</div>
+                        <div className="cw-muted" style={{ fontSize: 11.5 }}>Smooth 150ms fade-in/out when pausing or resuming</div>
+                      </div>
+                      <GlassSwitch
+                        checked={settings.smartFadePlayPause}
+                        tint={accentHex}
+                        intensity={settings.glassIntensity}
+                        onChange={(checked) => onUpdate({ smartFadePlayPause: checked })}
+                      />
+                    </div>
+
+                    <div className="cw-setting-row" style={{ padding: '2px 0' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>Auto-Pause Audio Disconnect</div>
+                        <div className="cw-muted" style={{ fontSize: 11.5 }}>Pause automatically when headphones or USB DAC unplugs</div>
+                      </div>
+                      <GlassSwitch
+                        checked={settings.autoPauseOnDeviceDisconnect}
+                        tint={accentHex}
+                        intensity={settings.glassIntensity}
+                        onChange={(checked) => onUpdate({ autoPauseOnDeviceDisconnect: checked })}
+                      />
+                    </div>
+
+                    <div className="cw-setting-row" style={{ padding: '2px 0' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>Now-Playing Glass Toast</div>
+                        <div className="cw-muted" style={{ fontSize: 11.5 }}>Show desktop toast corner notification when track changes in background</div>
+                      </div>
+                      <GlassSwitch
+                        checked={settings.nowPlayingToast}
+                        tint={accentHex}
+                        intensity={settings.glassIntensity}
+                        onChange={(checked) => onUpdate({ nowPlayingToast: checked })}
                       />
                     </div>
                   </div>
@@ -1572,6 +1637,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <h2 className="cw-h2" style={{ fontSize: 17, marginBottom: 4 }}>Shortcuts &amp; Touch</h2>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 5, fontSize: 12.5 }}>
                     {[
+                      ['Command Palette', 'Ctrl+Shift+P'],
                       ['Play / Pause', 'Space'],
                       ['Search / Best Part', 'Ctrl+K / B'],
                       ['Lyrics / Queue', 'L / Q'],

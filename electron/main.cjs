@@ -60,6 +60,10 @@ let savedWasMaximized = false;
 let tray = null;
 let lyricsOverlayWin = null;
 let lyricsOverlayLocked = false;
+let toastWin = null;
+let toastHideTimer = null;
+let lastToastPayload = null;
+let currentTitlebarIsDark = true;
 let isQuitting = false;
 let currentPort = 47821;
 let desktopConfig = { closeToTray: true, globalMediaKeys: true };
@@ -71,6 +75,20 @@ let lastLyricsState = {
   isPlaying: false,
   accentHex: '#259D8A',
 };
+
+function syncTitlebarOverlay(isDark = true, height = 32) {
+  currentTitlebarIsDark = Boolean(isDark);
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    mainWindow.setTitleBarOverlay({
+      color: '#00000000',
+      symbolColor: currentTitlebarIsDark ? '#e8ecf2' : '#181a20',
+      height,
+    });
+  } catch {
+    // Non-Windows or unsupported Electron environment
+  }
+}
 
 function showMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -295,6 +313,180 @@ function initTray(distDir) {
   }
 }
 
+function getTrackToastHtml() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title></title>
+<style>
+  * { box-sizing: border-box; user-select: none; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+  .wrap { width: 100%; height: 100%; padding: 6px; }
+  .card {
+    width: 100%; height: 100%;
+    border-radius: 18px;
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(16, 18, 24, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+    color: #f4f6fb;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .card[data-light='true'] {
+    background: rgba(247, 248, 252, 0.92);
+    border-color: rgba(15, 23, 42, 0.12);
+    color: #111318;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  }
+  .accent-strip {
+    position: absolute; left: 0; top: 14px; bottom: 14px;
+    width: 3px; border-radius: 0 3px 3px 0;
+    background: var(--accent, #259d8a);
+  }
+  .art {
+    width: 52px; height: 52px; border-radius: 12px;
+    object-fit: cover; flex-shrink: 0;
+    background: rgba(127, 127, 127, 0.25);
+  }
+  .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .badge {
+    font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent, #259d8a);
+  }
+  .title {
+    font-size: 13.5px; font-weight: 750; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .artist {
+    font-size: 11.5px; opacity: 0.72; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div id="card" class="card" onclick="fetch('/api/desktop/toast-focus', { method: 'POST' }).catch(() => {})">
+      <div class="accent-strip"></div>
+      <img id="art" class="art" alt="" />
+      <div class="meta">
+        <div class="badge">Now Playing</div>
+        <div id="title" class="title">ClaudeWaves</div>
+        <div id="artist" class="artist"></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    window.__cwShowToast = function(p) {
+      if (!p) return;
+      var card = document.getElementById('card');
+      card.dataset.light = p.isDark === false ? 'true' : 'false';
+      card.style.setProperty('--accent', p.accentHex || '#259d8a');
+      document.getElementById('title').textContent = p.title || 'ClaudeWaves';
+      document.getElementById('artist').textContent = p.artist || '';
+      var img = document.getElementById('art');
+      if (p.thumbnailUrl) {
+        img.src = p.thumbnailUrl;
+        img.style.display = 'block';
+      } else {
+        img.style.display = 'none';
+      }
+    };
+  </script>
+</body>
+</html>`;
+}
+
+function showTrackToast(payload = {}) {
+  const title = String(payload.title || '').trim();
+  if (!title) return;
+  const force = Boolean(payload.force);
+  const mainFocused =
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    mainWindow.isVisible() &&
+    mainWindow.isFocused() &&
+    !mainWindow.isMinimized();
+  if (!force && mainFocused) return;
+
+  lastToastPayload = {
+    title,
+    artist: String(payload.artist || ''),
+    thumbnailUrl: String(payload.thumbnailUrl || ''),
+    accentHex: String(payload.accentHex || '#259d8a'),
+    isDark: payload.isDark !== false,
+  };
+
+  if (toastHideTimer) {
+    clearTimeout(toastHideTimer);
+    toastHideTimer = null;
+  }
+
+  const reveal = () => {
+    if (!toastWin || toastWin.isDestroyed()) return;
+    toastWin.webContents
+      .executeJavaScript(`window.__cwShowToast && window.__cwShowToast(${JSON.stringify(lastToastPayload)});`)
+      .catch(() => {});
+    if (!toastWin.isVisible()) toastWin.showInactive();
+    toastHideTimer = setTimeout(() => {
+      if (toastWin && !toastWin.isDestroyed() && toastWin.isVisible()) {
+        toastWin.hide();
+      }
+      toastHideTimer = null;
+    }, 4200);
+  };
+
+  if (toastWin && !toastWin.isDestroyed()) {
+    reveal();
+    return;
+  }
+
+  const wa = screen.getPrimaryDisplay().workArea;
+  const w = 348;
+  const h = 96;
+  toastWin = new BrowserWindow({
+    width: w,
+    height: h,
+    x: Math.round(wa.x + wa.width - w - 16),
+    y: Math.round(wa.y + wa.height - h - 16),
+    title: '',
+    frame: false,
+    thickFrame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  toastWin.setMenu(null);
+  toastWin.setMenuBarVisibility(false);
+  toastWin.setAlwaysOnTop(true, 'floating');
+  toastWin.webContents.once('did-finish-load', reveal);
+  toastWin.on('closed', () => {
+    toastWin = null;
+  });
+  toastWin.loadURL(`http://127.0.0.1:${currentPort}/api/desktop/toast-html`);
+}
+
 function getLyricsOverlayHtml() {
   return `<!doctype html>
 <html lang="en">
@@ -499,7 +691,7 @@ function setMiniWindowMode(enabled) {
     mainWindow.setMinimumSize(340, 136);
     const wa = screen.getDisplayMatching(savedFullBounds).workArea;
     const miniW = 384;
-    const miniH = 152;
+    const miniH = 176;
     mainWindow.setBounds(
       {
         x: Math.round(wa.x + wa.width - miniW - 20),
@@ -511,6 +703,7 @@ function setMiniWindowMode(enabled) {
     );
     mainWindow.setAlwaysOnTop(true, 'floating');
     mainWindow.setResizable(false);
+    syncTitlebarOverlay(currentTitlebarIsDark, 26);
   } else {
     mainWindow.setAlwaysOnTop(false);
     mainWindow.setResizable(true);
@@ -525,6 +718,7 @@ function setMiniWindowMode(enabled) {
     }
     savedFullBounds = null;
     savedWasMaximized = false;
+    syncTitlebarOverlay(currentTitlebarIsDark, 32);
   }
 }
 
@@ -697,6 +891,53 @@ function startLocalServer(distDir, userDataDir) {
           res.statusCode = 200;
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           res.end(getLyricsOverlayHtml());
+          return;
+        }
+
+        if ((req.url || '') === '/api/desktop/titlebar-theme' && req.method === 'POST') {
+          const raw = await readJsonBody(req);
+          const body = raw ? JSON.parse(raw) : {};
+          const nextDark = body.isDark !== false;
+          const barHeight = mainWindow && !mainWindow.isDestroyed() && !mainWindow.isResizable() ? 26 : 32;
+          syncTitlebarOverlay(nextDark, barHeight);
+          if (mainWindow && !mainWindow.isDestroyed() && typeof body.bgHex === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.bgHex)) {
+            try {
+              mainWindow.setBackgroundColor(body.bgHex);
+            } catch {
+              // ignore
+            }
+          }
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end('{"ok":true}');
+          return;
+        }
+
+        if ((req.url || '') === '/api/desktop/toast-html' && req.method === 'GET') {
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.end(getTrackToastHtml());
+          return;
+        }
+
+        if ((req.url || '') === '/api/desktop/toast' && req.method === 'POST') {
+          const raw = await readJsonBody(req);
+          const body = raw ? JSON.parse(raw) : {};
+          showTrackToast(body || {});
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end('{"ok":true}');
+          return;
+        }
+
+        if ((req.url || '') === '/api/desktop/toast-focus' && req.method === 'POST') {
+          showMainWindow();
+          if (toastWin && !toastWin.isDestroyed() && toastWin.isVisible()) {
+            toastWin.hide();
+          }
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end('{"ok":true}');
           return;
         }
 
@@ -978,6 +1219,12 @@ async function createWindow() {
     title: 'ClaudeWaves Desktop',
     backgroundColor: '#080C1C',
     autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#00000000',
+      symbolColor: '#e8ecf2',
+      height: 32,
+    },
     icon: path.join(distDir, 'app_icon.png'),
     webPreferences: {
       contextIsolation: true,
@@ -1026,6 +1273,14 @@ app.on('before-quit', () => {
     globalShortcut.unregisterAll();
   } catch {
     // ignore
+  }
+  if (toastHideTimer) {
+    clearTimeout(toastHideTimer);
+    toastHideTimer = null;
+  }
+  if (toastWin && !toastWin.isDestroyed()) {
+    toastWin.destroy();
+    toastWin = null;
   }
   if (lyricsOverlayWin && !lyricsOverlayWin.isDestroyed()) {
     lyricsOverlayWin.destroy();

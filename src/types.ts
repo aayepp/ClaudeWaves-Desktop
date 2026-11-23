@@ -54,6 +54,7 @@ export interface LyricLine {
   endMs?: number;
   text: string;
   romanized?: string;
+  translated?: string;
   words?: LyricWord[];
 }
 
@@ -62,8 +63,15 @@ export type LyricsResult =
   | { kind: 'loading' }
   | { kind: 'empty' }
   | { kind: 'instrumental' }
-  | { kind: 'plain'; text: string; romanizedLines?: Array<string | null> }
+  | {
+      kind: 'plain';
+      text: string;
+      romanizedLines?: Array<string | null>;
+      translatedLines?: Array<string | null>;
+    }
   | { kind: 'synced'; wordSynced?: boolean; source?: string; lines: LyricLine[] };
+
+export type LyricsTranslateLang = 'off' | 'ms' | 'en';
 
 export interface BestPartInfo {
   timeMs: number;
@@ -161,6 +169,13 @@ export interface AppSettings {
   ambientIdleMinutes: number; // 0 = Off, 1 | 3 | 5 | 10
   autoSyncPlaylists: boolean;
   lyricsAutoRomanize: boolean;
+  audioOutputDeviceId: string;
+  smartFadePlayPause: boolean;
+  autoPauseOnDeviceDisconnect: boolean;
+  pitchSemitones: number; // -6..+6 semitones
+  reverbMix: number; // 0..1
+  lyricsTranslateLang: LyricsTranslateLang;
+  nowPlayingToast: boolean;
 }
 
 export interface OfflineTrackEntry extends Track {
@@ -248,6 +263,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ambientIdleMinutes: 3,
   autoSyncPlaylists: true,
   lyricsAutoRomanize: true,
+  audioOutputDeviceId: '',
+  smartFadePlayPause: true,
+  autoPauseOnDeviceDisconnect: true,
+  pitchSemitones: 0,
+  reverbMix: 0,
+  lyricsTranslateLang: 'off',
+  nowPlayingToast: true,
 };
 
 // 12 Curated Accent Colors (Neutral Clean default + 11 refined hues, no harsh neon green default)

@@ -5,6 +5,7 @@ import {
 } from '@zakisheriff/liquid-glass';
 import {
   Film,
+  Headphones,
   Heart,
   ListMusic,
   Loader2,
@@ -91,6 +92,8 @@ interface PlayerDockProps {
   floatingLyricsOpen?: boolean;
   onToggleFloatingLyrics?: () => void;
   onOpenAmbientMode?: () => void;
+  outputPopoverOpen?: boolean;
+  onToggleOutputPopover?: () => void;
 }
 
 export const PlayerDock: React.FC<PlayerDockProps> = React.memo(({
@@ -123,6 +126,8 @@ export const PlayerDock: React.FC<PlayerDockProps> = React.memo(({
   floatingLyricsOpen = false,
   onToggleFloatingLyrics,
   onOpenAmbientMode,
+  outputPopoverOpen = false,
+  onToggleOutputPopover,
 }) => {
   const track = player.currentTrack;
   const maxDuration = Math.max(1000, player.durationMs || track?.durationMs || 1000);
@@ -166,6 +171,8 @@ export const PlayerDock: React.FC<PlayerDockProps> = React.memo(({
         floatingLyricsOpen={floatingLyricsOpen}
         onToggleFloatingLyrics={onToggleFloatingLyrics}
         onOpenAmbientMode={onOpenAmbientMode}
+        outputPopoverOpen={outputPopoverOpen}
+        onToggleOutputPopover={onToggleOutputPopover}
       />
     );
   }
@@ -450,6 +457,20 @@ export const PlayerDock: React.FC<PlayerDockProps> = React.memo(({
                 iconSize={13}
                 showTooltip={true}
               />
+              {onToggleOutputPopover && (
+                <span className="cw-tip-anchor" data-tip="Audio Output Device">
+                  <GlassButton
+                    size="sm"
+                    variant={outputPopoverOpen ? 'tinted' : 'clear'}
+                    tint={accentHex}
+                    intensity={intensity}
+                    data-output-trigger="true"
+                    aria-label="Audio Output Device"
+                    icon={<Headphones size={15} />}
+                    onClick={onToggleOutputPopover}
+                  />
+                </span>
+              )}
               {onOpenAmbientMode && (
                 <span className="cw-tip-anchor" data-tip="Ambient Visualizer Fullscreen (F11)">
                   <GlassButton

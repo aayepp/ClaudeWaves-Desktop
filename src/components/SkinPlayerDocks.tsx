@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Film,
+  Headphones,
   Heart,
   ListMusic,
   Loader2,
@@ -54,6 +55,8 @@ export interface SkinPlayerDockProps {
   floatingLyricsOpen?: boolean;
   onToggleFloatingLyrics?: () => void;
   onOpenAmbientMode?: () => void;
+  outputPopoverOpen?: boolean;
+  onToggleOutputPopover?: () => void;
 }
 
 const RepeatIcon: React.FC<{ mode: PlayerState['repeatMode']; size?: number }> = ({
@@ -68,6 +71,7 @@ const RightActionCluster: React.FC<{
   rightPanelOpen: boolean;
   rightPanelTab: 'lyrics' | 'queue';
   floatingLyricsOpen?: boolean;
+  outputPopoverOpen?: boolean;
   tipPos?: 'top' | 'bottom';
   volumeFirst?: boolean;
   extraTrailing?: React.ReactNode;
@@ -75,6 +79,7 @@ const RightActionCluster: React.FC<{
   onToggleVideoMode: () => void;
   onToggleRightPanel: (tab: 'lyrics' | 'queue') => void;
   onToggleFloatingLyrics?: () => void;
+  onToggleOutputPopover?: () => void;
   onOpenAmbientMode?: () => void;
   onEnterMini: () => void;
   onOpenFullSheet: () => void;
@@ -85,6 +90,7 @@ const RightActionCluster: React.FC<{
   rightPanelOpen,
   rightPanelTab,
   floatingLyricsOpen = false,
+  outputPopoverOpen = false,
   tipPos = 'top',
   volumeFirst = false,
   extraTrailing,
@@ -92,6 +98,7 @@ const RightActionCluster: React.FC<{
   onToggleVideoMode,
   onToggleRightPanel,
   onToggleFloatingLyrics,
+  onToggleOutputPopover,
   onOpenAmbientMode,
   onEnterMini,
   onOpenFullSheet,
@@ -159,6 +166,20 @@ const RightActionCluster: React.FC<{
         </button>
       </span>
       {!volumeFirst && volNode}
+      {onToggleOutputPopover && (
+        <span className="cw-tip-anchor" data-tip="Audio Output Device" data-tip-pos={tipAttr}>
+          <button
+            type="button"
+            className="cw-skin-icon-btn"
+            data-output-trigger="true"
+            data-active={outputPopoverOpen}
+            aria-label="Audio Output Device"
+            onClick={onToggleOutputPopover}
+          >
+            <Headphones size={15} />
+          </button>
+        </span>
+      )}
       {onOpenAmbientMode && (
         <span className="cw-tip-anchor" data-tip="Ambient Visualizer Fullscreen (F11)" data-tip-pos={tipAttr}>
           <button
@@ -226,6 +247,8 @@ export const SkinPlayerDock: React.FC<SkinPlayerDockProps> = React.memo(({
   floatingLyricsOpen = false,
   onToggleFloatingLyrics,
   onOpenAmbientMode,
+  outputPopoverOpen = false,
+  onToggleOutputPopover,
 }) => {
   const track = player.currentTrack;
   const maxDuration = Math.max(1000, player.durationMs || track?.durationMs || 1000);
@@ -243,10 +266,12 @@ export const SkinPlayerDock: React.FC<SkinPlayerDockProps> = React.memo(({
     rightPanelOpen,
     rightPanelTab,
     floatingLyricsOpen,
+    outputPopoverOpen,
     onVolumeChange,
     onToggleVideoMode,
     onToggleRightPanel,
     onToggleFloatingLyrics,
+    onToggleOutputPopover,
     onOpenAmbientMode,
     onEnterMini,
     onOpenFullSheet,

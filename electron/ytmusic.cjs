@@ -7,6 +7,7 @@ const {
   fetchBestPartSignals,
   fetchSponsorBlockSegments,
   romanizeLyricLines,
+  translateLyricLines,
 } = require('./extras.cjs');
 
 let windowMiniHandler = null;
@@ -1153,6 +1154,19 @@ async function handleApiRequest(req, res) {
     try {
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
       const data = await romanizeLyricLines(body.trackId, body.lines);
+      sendJson(res, 200, data);
+    } catch {
+      sendJson(res, 400, { status: 'unavailable', subLines: [] });
+    }
+    return true;
+  }
+
+  if (parsed.pathname === '/api/lyrics/translate' && req.method === 'POST') {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    try {
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+      const data = await translateLyricLines(body.trackId, body.lines, body.targetLang);
       sendJson(res, 200, data);
     } catch {
       sendJson(res, 400, { status: 'unavailable', subLines: [] });

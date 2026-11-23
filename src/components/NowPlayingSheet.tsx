@@ -23,6 +23,7 @@ import {
   type LyricsBounceStyle,
   type LyricsDisplayMode,
   type LyricsFontSize,
+  type LyricsTranslateLang,
 } from '../types';
 import { CoverArtWaves } from './CoverArtWaves';
 import { SlimVolumeSlider } from './SlimVolumeSlider';
@@ -78,6 +79,7 @@ interface NowPlayingSheetProps {
   lyricsBounce: LyricsBounceStyle;
   lyricsDisplayMode: LyricsDisplayMode;
   lyricsAutoRomanize?: boolean;
+  lyricsTranslateLang?: LyricsTranslateLang;
   lyricsOffsetMs: number;
   videoMode: boolean;
   videoQuality: number;
@@ -87,6 +89,8 @@ interface NowPlayingSheetProps {
   onVolumeChange: (v: number) => void;
   onLyricsDisplayModeChange: (mode: LyricsDisplayMode) => void;
   onToggleLyricsAutoRomanize?: () => void;
+  onCycleLyricsTranslateLang?: () => void;
+  onOpenQuoteModal?: () => void;
   onLyricsOffsetChange: (ms: number) => void;
   onToggleVideoMode: () => void;
   onVideoQualityChange: (q: number) => void;
@@ -119,6 +123,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
   lyricsBounce,
   lyricsDisplayMode,
   lyricsAutoRomanize = true,
+  lyricsTranslateLang = 'off',
   lyricsOffsetMs,
   videoMode,
   videoQuality,
@@ -128,6 +133,8 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
   onVolumeChange,
   onLyricsDisplayModeChange,
   onToggleLyricsAutoRomanize,
+  onCycleLyricsTranslateLang,
+  onOpenQuoteModal,
   onLyricsOffsetChange,
   onToggleVideoMode,
   onVideoQualityChange,
@@ -408,11 +415,14 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
                 offsetMs={lyricsOffsetMs}
                 displayMode={lyricsDisplayMode}
                 autoRomanize={lyricsAutoRomanize}
+                translateLang={lyricsTranslateLang}
                 large={true}
                 fontSize={lyricsFontSize}
                 bounceStyle={lyricsBounce}
                 onDisplayModeChange={onLyricsDisplayModeChange}
                 onToggleAutoRomanize={onToggleLyricsAutoRomanize}
+                onCycleTranslateLang={onCycleLyricsTranslateLang}
+                onOpenQuoteModal={onOpenQuoteModal}
                 onOffsetChange={onLyricsOffsetChange}
                 onSeekTo={onSeekTo}
               />

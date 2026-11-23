@@ -698,6 +698,7 @@ const MAX_ROMANIZE_BATCH_CHARS = 3500;
 const MAX_ROMANIZE_CACHE = 40;
 const ROMANIZE_MARKER_RE = /\uE000[^\uE001]*\uE001/g;
 const romanizeCache = new Map();
+const translateCache = new Map();
 
 function hasNonLatinLettersText(text) {
   for (const ch of String(text || '')) {
@@ -715,33 +716,33 @@ function normalizeComparableLyric(text) {
     .replace(/\s+/g, ' ');
 }
 
-function getCachedRomanize(key) {
-  if (!romanizeCache.has(key)) return null;
-  const val = romanizeCache.get(key);
-  romanizeCache.delete(key);
-  romanizeCache.set(key, val);
+function getCachedTransform(cache, key) {
+  if (!cache.has(key)) return null;
+  const val = cache.get(key);
+  cache.delete(key);
+  cache.set(key, val);
   return val;
 }
 
-function putCachedRomanize(key, val) {
-  if (romanizeCache.has(key)) romanizeCache.delete(key);
-  romanizeCache.set(key, val);
-  while (romanizeCache.size > MAX_ROMANIZE_CACHE) {
-    const oldest = romanizeCache.keys().next().value;
-    if (oldest) romanizeCache.delete(oldest);
+function putCachedTransform(cache, key, val) {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, val);
+  while (cache.size > MAX_ROMANIZE_CACHE) {
+    const oldest = cache.keys().next().value;
+    if (oldest) cache.delete(oldest);
     else break;
   }
 }
 
-async function requestRomanizeBatch(slots) {
+async function requestTransformBatch(slots, { client, targetLang, dt, segIndex }) {
   const payload = slots
     .map((slot, idx) => (idx > 0 ? `\n\uE000${String(idx).padStart(4, '0')}\uE001\n${slot.text}` : slot.text))
     .join('');
   const form = new URLSearchParams();
-  form.set('client', 'dict-chrome-ex');
+  form.set('client', client);
   form.set('sl', 'auto');
-  form.set('tl', 'en');
-  form.set('dt', 'rm');
+  form.set('tl', targetLang);
+  form.set('dt', dt);
   form.set('q', payload);
 
   const res = await fetch(ROMANIZE_ENDPOINT, {
@@ -760,7 +761,7 @@ async function requestRomanizeBatch(slots) {
 
   const sourceLanguage = typeof root[2] === 'string' ? root[2] : '';
   const body = root[0]
-    .map((seg) => (Array.isArray(seg) && typeof seg[3] === 'string' ? seg[3] : ''))
+    .map((seg) => (Array.isArray(seg) && typeof seg[segIndex] === 'string' ? seg[segIndex] : ''))
     .join('');
   if (!body.trim()) return null;
 
@@ -778,7 +779,16 @@ async function requestRomanizeBatch(slots) {
   return { sourceLanguage, translations: parts };
 }
 
-async function romanizeLyricLines(trackId, lines) {
+async function processLyricTransform({
+  cache,
+  trackId,
+  lines,
+  client,
+  targetLang,
+  dt,
+  segIndex,
+  skipLatinOnly,
+}) {
   if (!Array.isArray(lines) || lines.length === 0) {
     return { status: 'unavailable', subLines: [] };
   }
@@ -794,12 +804,15 @@ async function romanizeLyricLines(trackId, lines) {
     }
   });
 
-  if (slots.length === 0 || !slots.some((s) => hasNonLatinLettersText(s.text))) {
+  if (slots.length === 0) {
+    return { status: 'unavailable', subLines: [] };
+  }
+  if (skipLatinOnly && !slots.some((s) => hasNonLatinLettersText(s.text))) {
     return { status: 'already_latin', subLines: [] };
   }
 
-  const cacheKey = `${String(trackId || '')}|${slots.length}|${slots[0]?.text || ''}|${slots[slots.length - 1]?.text || ''}`;
-  const cached = getCachedRomanize(cacheKey);
+  const cacheKey = `${String(trackId || '')}|${targetLang}|${slots.length}|${slots[0]?.text || ''}|${slots[slots.length - 1]?.text || ''}`;
+  const cached = getCachedTransform(cache, cacheKey);
   if (cached) return cached;
 
   const batches = [];
@@ -821,7 +834,9 @@ async function romanizeLyricLines(trackId, lines) {
   for (let i = 0; i < batches.length; i += 2) {
     const chunk = batches.slice(i, i + 2);
     // eslint-disable-next-line no-await-in-loop
-    const results = await Promise.all(chunk.map((b) => requestRomanizeBatch(b).catch(() => null)));
+    const results = await Promise.all(
+      chunk.map((b) => requestTransformBatch(b, { client, targetLang, dt, segIndex }).catch(() => null)),
+    );
     answers.push(...results);
   }
 
@@ -829,16 +844,16 @@ async function romanizeLyricLines(trackId, lines) {
     return { status: 'unavailable', subLines: [] };
   }
 
-  const romanizedTexts = answers.flatMap((a) => a.translations);
+  const transformedTexts = answers.flatMap((a) => a.translations);
   const sourceLanguage = answers.find((a) => a?.sourceLanguage)?.sourceLanguage || '';
-  if (romanizedTexts.length !== slots.length) {
+  if (transformedTexts.length !== slots.length) {
     return { status: 'unavailable', subLines: [] };
   }
 
   const byIndex = new Map();
   slots.forEach((slot, idx) => {
-    const rom = romanizedTexts[idx];
-    byIndex.set(slot.lineIndex, slot.isHeader ? `[${rom}]` : rom);
+    const out = transformedTexts[idx];
+    byIndex.set(slot.lineIndex, slot.isHeader ? `[${out}]` : out);
   });
 
   let anyChanged = false;
@@ -855,8 +870,38 @@ async function romanizeLyricLines(trackId, lines) {
   }
 
   const out = { status: 'ok', sourceLanguage, subLines };
-  putCachedRomanize(cacheKey, out);
+  putCachedTransform(cache, cacheKey, out);
   return out;
+}
+
+async function romanizeLyricLines(trackId, lines) {
+  return processLyricTransform({
+    cache: romanizeCache,
+    trackId,
+    lines,
+    client: 'dict-chrome-ex',
+    targetLang: 'en',
+    dt: 'rm',
+    segIndex: 3,
+    skipLatinOnly: true,
+  });
+}
+
+async function translateLyricLines(trackId, lines, targetLang = 'en') {
+  const cleanLang = targetLang === 'ms' ? 'ms' : targetLang === 'en' ? 'en' : null;
+  if (!cleanLang) {
+    return { status: 'unavailable', subLines: [] };
+  }
+  return processLyricTransform({
+    cache: translateCache,
+    trackId,
+    lines,
+    client: 'gtx',
+    targetLang: cleanLang,
+    dt: 't',
+    segIndex: 0,
+    skipLatinOnly: false,
+  });
 }
 
 module.exports = {
@@ -866,4 +911,5 @@ module.exports = {
   fetchBestPartSignals,
   fetchSponsorBlockSegments,
   romanizeLyricLines,
+  translateLyricLines,
 };

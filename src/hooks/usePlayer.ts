@@ -4,7 +4,13 @@ import {
   fetchSponsorBlockApi,
   type SponsorSegment,
 } from '../api/extras';
-import { detectLyricChorusMs, fetchSyncedLyrics, hasNonLatinScript, romanizeLyricsApi } from '../api/lyrics';
+import {
+  detectLyricChorusMs,
+  fetchSyncedLyrics,
+  hasNonLatinScript,
+  romanizeLyricsApi,
+  translateLyricsApi,
+} from '../api/lyrics';
 import { getOfflineAudioUrl } from '../api/offline';
 import { fetchUpNextRadio, resolveTrackStream } from '../api/youtube';
 import { combineEqWithAutoEq } from '../data/autoeq';
@@ -13,10 +19,16 @@ import {
   EQ_FREQUENCIES,
   type BestPartInfo,
   type LyricsResult,
+  type LyricsTranslateLang,
   type RepeatMode,
   type SavedPlaybackState,
   type Track,
 } from '../types';
+
+export interface AudioOutputDeviceInfo {
+  deviceId: string;
+  label: string;
+}
 
 export interface PlayerDspOptions {
   volumeNormalizer: boolean;
@@ -25,7 +37,14 @@ export interface PlayerDspOptions {
   sponsorBlockEnabled: boolean;
   offlineMode: boolean;
   offlineIds: Set<string>;
+  audioOutputDeviceId: string;
+  smartFadePlayPause: boolean;
+  autoPauseOnDeviceDisconnect: boolean;
+  pitchSemitones: number;
+  reverbMix: number;
+  lyricsTranslateLang: LyricsTranslateLang;
   onSponsorSkip?: (category: string) => void;
+  onDeviceDisconnected?: () => void;
 }
 
 const DEFAULT_DSP_OPTIONS: PlayerDspOptions = {
@@ -35,7 +54,26 @@ const DEFAULT_DSP_OPTIONS: PlayerDspOptions = {
   sponsorBlockEnabled: true,
   offlineMode: false,
   offlineIds: new Set(),
+  audioOutputDeviceId: '',
+  smartFadePlayPause: true,
+  autoPauseOnDeviceDisconnect: true,
+  pitchSemitones: 0,
+  reverbMix: 0,
+  lyricsTranslateLang: 'off',
 };
+
+function createReverbImpulse(ctx: AudioContext, durationSec = 2.4, decay = 2.6): AudioBuffer {
+  const sampleRate = Math.max(8000, ctx.sampleRate || 48000);
+  const length = Math.round(sampleRate * durationSec);
+  const impulse = ctx.createBuffer(2, length, sampleRate);
+  for (let ch = 0; ch < 2; ch += 1) {
+    const channelData = impulse.getChannelData(ch);
+    for (let i = 0; i < length; i += 1) {
+      channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+    }
+  }
+  return impulse;
+}
 
 export interface PlayerState {
   currentTrack: Track | null;
@@ -51,6 +89,7 @@ export interface PlayerState {
   lyrics: LyricsResult;
   bestPart: BestPartInfo | null;
   sleepRemainingSec: number | null;
+  abLoop: { aMs: number | null; bMs: number | null };
 }
 
 export function usePlayer(
@@ -68,8 +107,14 @@ export function usePlayer(
   const spatialWetGainRef = useRef<GainNode | null>(null);
   const normalizerRef = useRef<DynamicsCompressorNode | null>(null);
   const normMakeupGainRef = useRef<GainNode | null>(null);
+  const reverbDryGainRef = useRef<GainNode | null>(null);
+  const reverbWetGainRef = useRef<GainNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const fadeGainNodeRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const pauseFadeTimerRef = useRef<number | null>(null);
+  const knownOutputIdsRef = useRef<Set<string> | null>(null);
+  const translatedTrackKeyRef = useRef<string>('');
   const requestTokenRef = useRef(0);
   const needsResolveRef = useRef(false);
   const pendingSeekMsRef = useRef<number | null>(null);
@@ -81,6 +126,7 @@ export function usePlayer(
   const sponsorSegmentsRef = useRef<SponsorSegment[]>([]);
   const skippedSponsorKeysRef = useRef<Set<string>>(new Set());
 
+  const [audioOutputDevices, setAudioOutputDevices] = useState<AudioOutputDeviceInfo[]>([]);
   const [state, setState] = useState<PlayerState>({
     currentTrack: null,
     queue: [],
@@ -95,12 +141,73 @@ export function usePlayer(
     lyrics: { kind: 'idle' },
     bestPart: null,
     sleepRemainingSec: null,
+    abLoop: { aMs: null, bMs: null },
   });
 
   const stateRef = useRef(state);
   stateRef.current = state;
+  const abLoopRef = useRef(state.abLoop);
+  abLoopRef.current = state.abLoop;
   const eqGainsRef = useRef(eqGains);
   eqGainsRef.current = eqGains;
+
+  const applyOutputDevice = useCallback((deviceId: string) => {
+    const id = deviceId || '';
+    const ctx = audioCtxRef.current as (AudioContext & { setSinkId?: (sink: string) => Promise<void> }) | null;
+    if (ctx?.setSinkId) {
+      ctx.setSinkId(id).catch(() => {});
+    }
+    const el = audioRef.current as (HTMLAudioElement & { setSinkId?: (sink: string) => Promise<void> }) | null;
+    if (el?.setSinkId) {
+      el.setSinkId(id).catch(() => {});
+    }
+  }, []);
+
+  const refreshOutputDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(
+        (d) => d.kind === 'audiooutput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications',
+      );
+      const formatted: AudioOutputDeviceInfo[] = outputs.map((d, idx) => ({
+        deviceId: d.deviceId,
+        label: d.label.trim() || `Audio Output ${idx + 1}`,
+      }));
+      setAudioOutputDevices(formatted);
+      const nextIds = new Set(formatted.map((d) => d.deviceId));
+      const prevIds = knownOutputIdsRef.current;
+      knownOutputIdsRef.current = nextIds;
+
+      if (prevIds) {
+        const selectedId = dspRef.current.audioOutputDeviceId;
+        const selectedLost = Boolean(selectedId && !nextIds.has(selectedId));
+        let removedPhysical = false;
+        for (const oldId of prevIds) {
+          if (!nextIds.has(oldId)) {
+            removedPhysical = true;
+            break;
+          }
+        }
+        if ((selectedLost || removedPhysical) && dspRef.current.autoPauseOnDeviceDisconnect && stateRef.current.isPlaying) {
+          if (pauseFadeTimerRef.current !== null) {
+            window.clearTimeout(pauseFadeTimerRef.current);
+            pauseFadeTimerRef.current = null;
+          }
+          audioRef.current?.pause();
+          const fNode = fadeGainNodeRef.current;
+          const ctx = audioCtxRef.current;
+          if (fNode && ctx) {
+            fNode.gain.cancelScheduledValues(ctx.currentTime);
+            fNode.gain.setValueAtTime(1, ctx.currentTime);
+          }
+          dspRef.current.onDeviceDisconnected?.();
+        }
+      }
+    } catch {
+      // Ignore device enumeration failure
+    }
+  }, []);
 
   // Lazy-connect Web Audio 10-band EQ + AutoEQ + Spatial 3D + Normalizer + Safety Limiter + AnalyserNode
   const ensureAudioGraph = useCallback(() => {
@@ -150,6 +257,16 @@ export function usePlayer(
       const normSum = ctx.createGain();
       normSum.gain.value = 1;
 
+      const reverbDryGain = ctx.createGain();
+      const reverbWetGain = ctx.createGain();
+      const mix = Math.max(0, Math.min(1, dspRef.current.reverbMix || 0));
+      reverbDryGain.gain.value = 1 - mix * 0.22;
+      reverbWetGain.gain.value = mix * 0.62;
+      const convolver = ctx.createConvolver();
+      convolver.buffer = createReverbImpulse(ctx);
+      const reverbOut = ctx.createGain();
+      reverbOut.gain.value = 1;
+
       const normalizer = ctx.createDynamicsCompressor();
       if (dspRef.current.volumeNormalizer) {
         normalizer.threshold.value = -18;
@@ -176,6 +293,8 @@ export function usePlayer(
 
       const gainNode = ctx.createGain();
       gainNode.gain.value = 1;
+      const fadeGainNode = ctx.createGain();
+      fadeGainNode.gain.value = 1;
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 128;
       analyser.smoothingTimeConstant = 0.78;
@@ -198,24 +317,35 @@ export function usePlayer(
       wetFilter.connect(wetGain);
       wetGain.connect(normSum);
 
-      normSum.connect(normalizer);
+      normSum.connect(reverbDryGain);
+      reverbDryGain.connect(reverbOut);
+      normSum.connect(convolver);
+      convolver.connect(reverbWetGain);
+      reverbWetGain.connect(reverbOut);
+
+      reverbOut.connect(normalizer);
       normalizer.connect(normMakeup);
       normMakeup.connect(safetyLimiter);
       safetyLimiter.connect(gainNode);
-      gainNode.connect(analyser);
+      gainNode.connect(fadeGainNode);
+      fadeGainNode.connect(analyser);
       analyser.connect(ctx.destination);
 
       audioCtxRef.current = ctx;
       eqFiltersRef.current = filters;
       spatialWetGainRef.current = wetGain;
+      reverbDryGainRef.current = reverbDryGain;
+      reverbWetGainRef.current = reverbWetGain;
       normalizerRef.current = normalizer;
       normMakeupGainRef.current = normMakeup;
       gainNodeRef.current = gainNode;
+      fadeGainNodeRef.current = fadeGainNode;
       analyserRef.current = analyser;
+      applyOutputDevice(dspRef.current.audioOutputDeviceId);
     } catch {
       // Fallback gracefully to direct HTMLAudio output
     }
-  }, []);
+  }, [applyOutputDevice]);
 
   // Single HTMLAudioElement setup
   useEffect(() => {
@@ -282,7 +412,15 @@ export function usePlayer(
     el.addEventListener('ended', onEnded);
     el.addEventListener('error', onError);
 
+    refreshOutputDevices();
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshOutputDevices);
+
     return () => {
+      if (pauseFadeTimerRef.current !== null) {
+        window.clearTimeout(pauseFadeTimerRef.current);
+        pauseFadeTimerRef.current = null;
+      }
+      navigator.mediaDevices?.removeEventListener?.('devicechange', refreshOutputDevices);
       el.pause();
       el.src = '';
       el.removeEventListener('timeupdate', onTime);
@@ -295,9 +433,9 @@ export function usePlayer(
       el.removeEventListener('error', onError);
       audioCtxRef.current?.close().catch(() => {});
     };
-  }, []);
+  }, [refreshOutputDevices]);
 
-  // Smooth 30fps external clock tick while playing (zero root React re-renders) + Crossfade fade-out + SponsorBlock skip
+  // Smooth 30fps external clock tick while playing (zero root React re-renders) + A-B loop + Crossfade fade-out + SponsorBlock skip
   useEffect(() => {
     if (!state.isPlaying) return;
     const id = window.setInterval(() => {
@@ -307,6 +445,13 @@ export function usePlayer(
       const ms = Math.floor(curSec * 1000);
       if (Math.abs(getPlaybackPositionMs() - ms) >= 24) {
         setPlaybackPositionMs(ms);
+      }
+
+      const loop = abLoopRef.current;
+      if (loop.aMs !== null && loop.bMs !== null && loop.bMs > loop.aMs + 400 && ms >= loop.bMs) {
+        el.currentTime = loop.aMs / 1000;
+        setPlaybackPositionMs(loop.aMs);
+        return;
       }
 
       if (dspRef.current.sponsorBlockEnabled && sponsorSegmentsRef.current.length > 0) {
@@ -350,12 +495,82 @@ export function usePlayer(
     }
   }, [volume]);
 
-  // Apply playback rate
+  // Apply playback rate + pitch shift (semitones)
+  const pitchSemitones = dspOptions?.pitchSemitones ?? 0;
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.playbackRate = Math.max(0.5, Math.min(2, playbackRate || 1));
+    const el = audioRef.current as (HTMLAudioElement & { webkitPreservesPitch?: boolean }) | null;
+    if (el) {
+      const pitchFactor = Math.pow(2, (pitchSemitones || 0) / 12);
+      const effectiveRate = Math.max(0.5, Math.min(2, (playbackRate || 1) * pitchFactor));
+      const preserve = (pitchSemitones || 0) === 0;
+      el.preservesPitch = preserve;
+      el.webkitPreservesPitch = preserve;
+      el.playbackRate = effectiveRate;
     }
-  }, [playbackRate]);
+  }, [playbackRate, pitchSemitones]);
+
+  // Apply Audio Output device cleanly
+  const selectedOutputId = dspOptions?.audioOutputDeviceId ?? '';
+  useEffect(() => {
+    applyOutputDevice(selectedOutputId);
+  }, [selectedOutputId, applyOutputDevice]);
+
+  // Apply Reverb dry/wet mix live
+  const reverbMixVal = dspOptions?.reverbMix ?? 0;
+  useEffect(() => {
+    const dry = reverbDryGainRef.current;
+    const wet = reverbWetGainRef.current;
+    const ctx = audioCtxRef.current;
+    if (dry && wet && ctx) {
+      const mix = Math.max(0, Math.min(1, reverbMixVal || 0));
+      dry.gain.setTargetAtTime(1 - mix * 0.22, ctx.currentTime, 0.04);
+      wet.gain.setTargetAtTime(mix * 0.62, ctx.currentTime, 0.04);
+    }
+  }, [reverbMixVal]);
+
+  // Dual-language Lyric Translation enrichment (BM / EN)
+  const translateLang = dspOptions?.lyricsTranslateLang ?? 'off';
+  const curVideoIdForTrans = state.currentTrack?.videoId ?? '';
+  const curLyricsKindForTrans = state.lyrics.kind;
+  useEffect(() => {
+    if (translateLang === 'off' || !curVideoIdForTrans) return;
+    const curLyrics = stateRef.current.lyrics;
+    if (curLyrics.kind !== 'synced' && curLyrics.kind !== 'plain') return;
+
+    const rawLines =
+      curLyrics.kind === 'synced'
+        ? curLyrics.lines.map((l) => l.text)
+        : curLyrics.text.split(/\r?\n/);
+    if (rawLines.length === 0) return;
+
+    const key = `${curVideoIdForTrans}|${translateLang}|${curLyrics.kind}|${rawLines.length}`;
+    if (translatedTrackKeyRef.current === key) return;
+    translatedTrackKeyRef.current = key;
+    const capturedToken = requestTokenRef.current;
+    let cancelled = false;
+
+    translateLyricsApi(curVideoIdForTrans, rawLines, translateLang).then((subLines) => {
+      if (cancelled || !subLines || requestTokenRef.current !== capturedToken) return;
+      setState((prev) => {
+        if (prev.currentTrack?.videoId !== curVideoIdForTrans) return prev;
+        if (prev.lyrics.kind === 'synced') {
+          const enriched = prev.lyrics.lines.map((ln, idx) => ({
+            ...ln,
+            ...(subLines[idx] ? { translated: subLines[idx]! } : {}),
+          }));
+          return { ...prev, lyrics: { ...prev.lyrics, lines: enriched } };
+        }
+        if (prev.lyrics.kind === 'plain') {
+          return { ...prev, lyrics: { ...prev.lyrics, translatedLines: subLines } };
+        }
+        return prev;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [curVideoIdForTrans, curLyricsKindForTrans, translateLang]);
 
   // Apply 10-band EQ + AutoEQ compensation live
   const autoEqProfile = dspOptions?.autoEqProfile ?? 'Off';
@@ -499,6 +714,15 @@ export function usePlayer(
 
       const token = ++requestTokenRef.current;
       const resumeSeekMs = Math.max(0, Math.round(initialSeekMs || 0));
+      if (pauseFadeTimerRef.current !== null) {
+        window.clearTimeout(pauseFadeTimerRef.current);
+        pauseFadeTimerRef.current = null;
+      }
+      if (fadeGainNodeRef.current && audioCtxRef.current) {
+        fadeGainNodeRef.current.gain.cancelScheduledValues(audioCtxRef.current.currentTime);
+        fadeGainNodeRef.current.gain.setValueAtTime(1, audioCtxRef.current.currentTime);
+      }
+      translatedTrackKeyRef.current = '';
       needsResolveRef.current = false;
       pendingSeekMsRef.current = null;
       initialSeekLockRef.current = resumeSeekMs > 0;
@@ -518,6 +742,7 @@ export function usePlayer(
         streamInfo: null,
         lyrics: { kind: 'loading' },
         bestPart: null,
+        abLoop: { aMs: null, bMs: null },
       }));
 
       loadTrackMeta(track, token);
@@ -544,7 +769,13 @@ export function usePlayer(
           ? getOfflineAudioUrl(track.videoId)
           : (resolved!.proxyUrl ?? resolved!.url);
         audio.src = playableUrl;
-        audio.playbackRate = Math.max(0.5, Math.min(2, playbackRate || 1));
+        const pitch = dspRef.current.pitchSemitones || 0;
+        const pitchFactor = Math.pow(2, pitch / 12);
+        const audioCompat = audio as HTMLAudioElement & { webkitPreservesPitch?: boolean };
+        audio.preservesPitch = pitch === 0;
+        audioCompat.webkitPreservesPitch = pitch === 0;
+        audio.playbackRate = Math.max(0.5, Math.min(2, (playbackRate || 1) * pitchFactor));
+        applyOutputDevice(dspRef.current.audioOutputDeviceId);
 
         const applyInitialSeek = () => {
           if (requestTokenRef.current !== token) return;
@@ -601,7 +832,7 @@ export function usePlayer(
         }));
       }
     },
-    [ensureAudioGraph, loadTrackMeta, onTrackStart, playbackRate],
+    [applyOutputDevice, ensureAudioGraph, loadTrackMeta, onTrackStart, playbackRate],
   );
 
   const restoreSession = useCallback(
@@ -699,18 +930,82 @@ export function usePlayer(
     const audio = audioRef.current;
     const cur = stateRef.current;
     if (!audio || !cur.currentTrack) return;
+    if (pauseFadeTimerRef.current !== null) {
+      window.clearTimeout(pauseFadeTimerRef.current);
+      pauseFadeTimerRef.current = null;
+    }
     if (needsResolveRef.current) {
       const seekMs = pendingSeekMsRef.current ?? getPlaybackPositionMs();
       startAtIndex(Math.max(0, cur.currentIndex), cur.queue, seekMs);
       return;
     }
     ensureAudioGraph();
+    const fNode = fadeGainNodeRef.current;
+    const ctx = audioCtxRef.current;
+    const smartFade = dspRef.current.smartFadePlayPause;
+
     if (audio.paused) {
+      if (smartFade && fNode && ctx) {
+        const now = ctx.currentTime;
+        fNode.gain.cancelScheduledValues(now);
+        fNode.gain.setValueAtTime(0.001, now);
+        fNode.gain.linearRampToValueAtTime(1, now + 0.15);
+      } else if (fNode && ctx) {
+        fNode.gain.setValueAtTime(1, ctx.currentTime);
+      }
       audio.play().catch(() => {});
+    } else if (smartFade && fNode && ctx) {
+      const now = ctx.currentTime;
+      fNode.gain.cancelScheduledValues(now);
+      fNode.gain.setValueAtTime(Math.max(0.001, fNode.gain.value || 1), now);
+      fNode.gain.linearRampToValueAtTime(0.001, now + 0.14);
+      pauseFadeTimerRef.current = window.setTimeout(() => {
+        pauseFadeTimerRef.current = null;
+        audio.pause();
+        if (fadeGainNodeRef.current && audioCtxRef.current) {
+          fadeGainNodeRef.current.gain.setValueAtTime(1, audioCtxRef.current.currentTime);
+        }
+      }, 145);
     } else {
       audio.pause();
     }
   }, [ensureAudioGraph, startAtIndex]);
+
+  const setLoopPointA = useCallback(() => {
+    const pos = Math.max(0, getPlaybackPositionMs());
+    setState((prev) => {
+      const curB = prev.abLoop.bMs;
+      return {
+        ...prev,
+        abLoop: {
+          aMs: pos,
+          bMs: curB !== null && curB > pos + 400 ? curB : null,
+        },
+      };
+    });
+  }, []);
+
+  const setLoopPointB = useCallback(() => {
+    const pos = Math.max(0, getPlaybackPositionMs());
+    setState((prev) => {
+      const curA = prev.abLoop.aMs ?? 0;
+      const aMs = Math.min(curA, pos);
+      const bMs = Math.max(curA, pos);
+      if (bMs <= aMs + 400) return prev;
+      return {
+        ...prev,
+        abLoop: { aMs, bMs },
+      };
+    });
+  }, []);
+
+  const clearAbLoop = useCallback(() => {
+    setState((prev) =>
+      prev.abLoop.aMs === null && prev.abLoop.bMs === null
+        ? prev
+        : { ...prev, abLoop: { aMs: null, bMs: null } },
+    );
+  }, []);
 
   const seekTo = useCallback((ms: number) => {
     const clamped = Math.max(0, ms);
@@ -814,6 +1109,8 @@ export function usePlayer(
   return {
     state,
     analyserRef,
+    audioOutputDevices,
+    refreshOutputDevices,
     playTrack,
     playAtIndex: startAtIndex,
     restoreSession,
@@ -821,6 +1118,9 @@ export function usePlayer(
     seekTo,
     jumpToBestPart,
     setSleepTimer,
+    setLoopPointA,
+    setLoopPointB,
+    clearAbLoop,
     next,
     previous,
     addToQueue,

@@ -17,6 +17,7 @@ import {
   Search,
   Settings,
   Sliders,
+  Sparkles,
   User,
   X,
 } from 'lucide-react';
@@ -48,6 +49,7 @@ interface SidebarProps {
   recentCount: number;
   downloadedCount?: number;
   offlineMode?: boolean;
+  smartPlaylists?: UserPlaylist[];
   playlists: UserPlaylist[];
   stats: ListeningStats;
   eqPreset: string;
@@ -80,6 +82,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   recentCount,
   downloadedCount = 0,
   offlineMode = false,
+  smartPlaylists = [],
   playlists,
   stats,
   eqPreset,
@@ -337,6 +340,26 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               </div>
             </button>
 
+            {smartPlaylists.map((sp) => (
+              <button
+                key={sp.id}
+                type="button"
+                className="cw-spotify-lib-row"
+                data-active={isRoute('playlist', sp.id)}
+                onClick={() => onSelectRoute({ kind: 'playlist', id: sp.id })}
+              >
+                <div className="cw-spotify-lib-art cw-spotify-stats-tile">
+                  <Sparkles size={17} />
+                </div>
+                <div className="cw-row-meta" style={{ textAlign: 'left' }}>
+                  <div className="cw-spotify-lib-name cw-ellipsis">{sp.name}</div>
+                  <div className="cw-spotify-lib-sub cw-ellipsis">
+                    Smart Mix · {sp.tracks.length} {sp.tracks.length === 1 ? 'song' : 'songs'}
+                  </div>
+                </div>
+              </button>
+            ))}
+
             {playlists.length === 0 ? (
               <div className="cw-sidebar-empty">No playlists yet</div>
             ) : (
@@ -461,6 +484,22 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                   </button>
                 </span>
               </div>
+            )}
+
+            {smartPlaylists.length > 0 && (
+              <>
+                <div className="cw-sidebar-section-label">Smart Mixes</div>
+                {smartPlaylists.map((sp) => (
+                  <SidebarNavButton
+                    key={sp.id}
+                    icon={<Sparkles size={15} className="cw-ic-sparkle" />}
+                    label={sp.name}
+                    badge={sp.tracks.length > 0 ? String(sp.tracks.length) : undefined}
+                    active={isRoute('playlist', sp.id)}
+                    onClick={() => onSelectRoute({ kind: 'playlist', id: sp.id })}
+                  />
+                ))}
+              </>
             )}
 
             {/* Playlists */}

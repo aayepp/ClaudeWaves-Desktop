@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.8';
+export const APP_VERSION = '1.4.9';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,18 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.9',
+    date: '2026-11-23',
+    summary: 'Blended 32px Window Titlebar, Audio FX & Output Switcher, Lyric Translation & Quote Cards, Command Palette, Glass Track Toast & Smart Mixes.',
+    added: [
+      'Slim transparent 32px titlebar overlay blended seamlessly across every theme (Dark, Light, AMOLED, Comic Pop) and all 7 layout skins while preserving Windows 11 Snap Layouts.',
+      'In-app Audio Output Device Switcher (speakers, headphones, USB DAC, Bluetooth via setSinkId) plus automatic pause on audio device disconnect.',
+      'Real-time Pitch shift (-6..+6 semitones), Hall Reverb convolver, 1-click Slowed + Reverb mode, A-B Section Loop markers, and smooth 150ms Smart Fade Play/Pause.',
+      'Dual-language Lyrics Translation (Bahasa Melayu & English) via /api/lyrics/translate plus Lyric Quote Card PNG exporter (1080x1350 & 1080x1920) with Copy/Download.',
+      'Global Command Palette (Ctrl+Shift+P), corner Now-Playing Glass Toast notification in background, Smart Mixes (Most Played, Heavy Rotation, Forgotten Gems), and versioned Backup/Restore JSON.',
+    ],
+  },
   {
     version: '1.4.8',
     date: '2026-11-23',

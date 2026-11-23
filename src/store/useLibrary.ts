@@ -74,6 +74,36 @@ function mergeLibrary(parsed: Partial<LibraryData>, fallback: LibraryData): Libr
         typeof rawSettings.lyricsAutoRomanize === 'boolean'
           ? rawSettings.lyricsAutoRomanize
           : fallback.settings.lyricsAutoRomanize,
+      audioOutputDeviceId:
+        typeof rawSettings.audioOutputDeviceId === 'string'
+          ? rawSettings.audioOutputDeviceId
+          : fallback.settings.audioOutputDeviceId,
+      smartFadePlayPause:
+        typeof rawSettings.smartFadePlayPause === 'boolean'
+          ? rawSettings.smartFadePlayPause
+          : fallback.settings.smartFadePlayPause,
+      autoPauseOnDeviceDisconnect:
+        typeof rawSettings.autoPauseOnDeviceDisconnect === 'boolean'
+          ? rawSettings.autoPauseOnDeviceDisconnect
+          : fallback.settings.autoPauseOnDeviceDisconnect,
+      pitchSemitones:
+        typeof rawSettings.pitchSemitones === 'number' && Number.isFinite(rawSettings.pitchSemitones)
+          ? Math.max(-6, Math.min(6, rawSettings.pitchSemitones))
+          : fallback.settings.pitchSemitones,
+      reverbMix:
+        typeof rawSettings.reverbMix === 'number' && Number.isFinite(rawSettings.reverbMix)
+          ? Math.max(0, Math.min(1, rawSettings.reverbMix))
+          : fallback.settings.reverbMix,
+      lyricsTranslateLang:
+        rawSettings.lyricsTranslateLang === 'ms' ||
+        rawSettings.lyricsTranslateLang === 'en' ||
+        rawSettings.lyricsTranslateLang === 'off'
+          ? rawSettings.lyricsTranslateLang
+          : fallback.settings.lyricsTranslateLang,
+      nowPlayingToast:
+        typeof rawSettings.nowPlayingToast === 'boolean'
+          ? rawSettings.nowPlayingToast
+          : fallback.settings.nowPlayingToast,
       closeToTray:
         typeof rawSettings.closeToTray === 'boolean'
           ? rawSettings.closeToTray
@@ -329,13 +359,60 @@ export function useLibrary() {
   }, []);
 
   const exportBackupJson = useCallback((): string => {
-    return JSON.stringify(library, null, 2);
-  }, [library]);
-
-  const importBackupJson = useCallback((rawJson: string) => {
-    const parsed = JSON.parse(rawJson) as Partial<LibraryData>;
-    setLibrary((prev) => mergeLibrary(parsed, prev));
+    return JSON.stringify(
+      {
+        schema: 'claudewaves-desktop-backup',
+        version: 1,
+        exportedAtMs: Date.now(),
+        data: latestRef.current,
+      },
+      null,
+      2,
+    );
   }, []);
+
+  const importBackupJson = useCallback(
+    (rawJson: string): { ok: true; playlistsCount: number; likedCount: number } => {
+      const parsedRoot = JSON.parse(rawJson) as Record<string, unknown> | null;
+      if (!parsedRoot || typeof parsedRoot !== 'object') {
+        throw new Error('Invalid backup payload');
+      }
+      const incoming =
+        parsedRoot.schema === 'claudewaves-desktop-backup' &&
+        parsedRoot.data &&
+        typeof parsedRoot.data === 'object'
+          ? (parsedRoot.data as Partial<LibraryData>)
+          : (parsedRoot as Partial<LibraryData>);
+      if (
+        !incoming.settings &&
+        !Array.isArray(incoming.playlists) &&
+        !Array.isArray(incoming.likedTracks) &&
+        !Array.isArray(incoming.recentlyPlayed)
+      ) {
+        throw new Error('Backup missing library data');
+      }
+      const nextMerged = mergeLibrary(incoming, EMPTY_LIBRARY);
+      latestRef.current = nextMerged;
+      setLibrary(nextMerged);
+      try {
+        const serialized = JSON.stringify(nextMerged);
+        localStorage.setItem(STORAGE_KEY, serialized);
+        fetch('/api/library', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: serialized,
+        }).catch(() => {});
+      } catch {
+        // Ignore storage write errors
+      }
+      return {
+        ok: true,
+        playlistsCount: nextMerged.playlists.length,
+        likedCount: nextMerged.likedTracks.length,
+      };
+    },
+    [],
+  );
 
   const setTrackLyricsOffset = useCallback((videoId: string, offsetMs: number) => {
     if (!videoId) return;

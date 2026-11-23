@@ -104,6 +104,40 @@ export async function syncDesktopPlaybackState(payload: {
   }
 }
 
+export async function syncDesktopTitlebarTheme(payload: {
+  isDark: boolean;
+  bgHex?: string;
+}): Promise<void> {
+  try {
+    await fetch('/api/desktop/titlebar-theme', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Ignore outside Electron runtime
+  }
+}
+
+export async function showDesktopTrackToast(payload: {
+  title: string;
+  artist: string;
+  thumbnailUrl?: string;
+  accentHex?: string;
+  isDark?: boolean;
+  force?: boolean;
+}): Promise<void> {
+  try {
+    await fetch('/api/desktop/toast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Ignore outside Electron runtime
+  }
+}
+
 export interface FloatingLyricsPayload {
   action: 'open' | 'close' | 'toggle' | 'lock' | 'unlock' | 'update';
   state?: {

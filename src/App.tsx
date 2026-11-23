@@ -47,7 +47,9 @@ import {
   fetchArtistPage,
   setDesktopFullscreen,
   setMiniWindowMode,
+  showDesktopTrackToast,
   syncDesktopPlaybackState,
+  syncDesktopTitlebarTheme,
   updateDesktopConfig,
 } from './api/extras';
 import { fetchExploreFeed, fetchHomeFeed, searchYouTubeMusic } from './api/youtube';
@@ -68,6 +70,8 @@ import {
 import { AmbientVisualizerView } from './components/AmbientVisualizerView';
 import { AndroidSplash } from './components/AndroidSplash';
 import { ArtistView } from './components/ArtistView';
+import { AudioOutputPopover } from './components/AudioOutputPopover';
+import { CommandPalette } from './components/CommandPalette';
 import { CoverFlowDeck } from './components/CoverFlowDeck';
 import { buildWaveHeights } from './components/FlatSeekbar';
 import {
@@ -76,6 +80,7 @@ import {
 } from './components/FloatingLyricsBridge';
 import { HorizontalShelf } from './components/HorizontalShelf';
 import { ImportModal } from './components/ImportModal';
+import { LyricQuoteModal } from './components/LyricQuoteModal';
 import { MiniPlayerView } from './components/MiniPlayerView';
 import { NowPlayingSheet, type SheetOrigin } from './components/NowPlayingSheet';
 import { PlayerDock } from './components/PlayerDock';
@@ -93,6 +98,7 @@ import {
   SyncedVideoPlayer,
   type FloatingVideoBox,
 } from './components/SyncedVideoPlayer';
+import { buildSmartPlaylists, isSmartPlaylistId } from './utils/smartPlaylists';
 import { getPlaybackPositionMs } from './hooks/playbackClock';
 import { usePlayer } from './hooks/usePlayer';
 import { LAST_PLAYBACK_STORAGE_KEY, useLibrary } from './store/useLibrary';
@@ -290,6 +296,10 @@ export const App: React.FC = () => {
   const [eqPopupOpen, setEqPopupOpen] = useState(false);
   const eqPopupOpenRef = useRef(eqPopupOpen);
   eqPopupOpenRef.current = eqPopupOpen;
+  const [outputPopoverOpen, setOutputPopoverOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
+  const lastToastedVideoIdRef = useRef<string | null>(null);
 
   // Offline downloads store
   const [offlineEntries, setOfflineEntries] = useState<OfflineTrackEntry[]>([]);
@@ -347,6 +357,10 @@ export const App: React.FC = () => {
     [showToast],
   );
 
+  const handleDeviceDisconnected = useCallback(() => {
+    showToast('Peranti audio tercabut — lagu dijeda');
+  }, [showToast]);
+
   const dspOptions = useMemo(
     () => ({
       volumeNormalizer: settings.volumeNormalizer,
@@ -355,7 +369,14 @@ export const App: React.FC = () => {
       sponsorBlockEnabled: settings.sponsorBlockEnabled,
       offlineMode: settings.offlineMode,
       offlineIds,
+      audioOutputDeviceId: settings.audioOutputDeviceId,
+      smartFadePlayPause: settings.smartFadePlayPause,
+      autoPauseOnDeviceDisconnect: settings.autoPauseOnDeviceDisconnect,
+      pitchSemitones: settings.pitchSemitones,
+      reverbMix: settings.reverbMix,
+      lyricsTranslateLang: settings.lyricsTranslateLang,
       onSponsorSkip: handleSponsorSkip,
+      onDeviceDisconnected: handleDeviceDisconnected,
     }),
     [
       settings.volumeNormalizer,
@@ -364,7 +385,14 @@ export const App: React.FC = () => {
       settings.sponsorBlockEnabled,
       settings.offlineMode,
       offlineIds,
+      settings.audioOutputDeviceId,
+      settings.smartFadePlayPause,
+      settings.autoPauseOnDeviceDisconnect,
+      settings.pitchSemitones,
+      settings.reverbMix,
+      settings.lyricsTranslateLang,
       handleSponsorSkip,
+      handleDeviceDisconnected,
     ],
   );
 
@@ -609,6 +637,21 @@ export const App: React.FC = () => {
     html.dataset.preset = settings.layoutSkin === 'default' ? settings.themePreset : 'skin';
     html.dataset.skin = settings.layoutSkin;
     html.dataset.amoled = String(settings.amoled);
+    html.dataset.fullscreen = String(ambientModeOpen);
+    html.dataset.mini = String(miniMode);
+
+    const titlebarBgHex = !isDark
+      ? settings.themePreset === 'comic'
+        ? '#FFF4D1'
+        : '#ECEFF4'
+      : settings.amoled
+        ? '#000000'
+        : settings.layoutSkin === 'spotify' || settings.layoutSkin === 'soundcloud'
+          ? '#121212'
+          : settings.layoutSkin === 'ytmusic' || settings.layoutSkin === 'tidal' || settings.layoutSkin === 'nothing'
+            ? '#0B0B0D'
+            : '#080C1C';
+    syncDesktopTitlebarTheme({ isDark, bgHex: titlebarBgHex });
 
     const onAccent = srgbLuminance(activeAccent) > 0.34 ? '#0b0c10' : '#ffffff';
     const isCustomColor =
@@ -645,6 +688,8 @@ export const App: React.FC = () => {
     settings.layoutSkin,
     settings.themePreset,
     settings.amoled,
+    ambientModeOpen,
+    miniMode,
     settings.accentHex,
     settings.followCoverAccent,
     trackCoverHex,
@@ -1113,6 +1158,35 @@ export const App: React.FC = () => {
   const handleToggleAutoRomanize = useCallback(() => {
     updateSettings({ lyricsAutoRomanize: !settings.lyricsAutoRomanize });
   }, [settings.lyricsAutoRomanize, updateSettings]);
+  const handleCycleTranslateLang = useCallback(() => {
+    const next =
+      settings.lyricsTranslateLang === 'off'
+        ? 'ms'
+        : settings.lyricsTranslateLang === 'ms'
+          ? 'en'
+          : 'off';
+    updateSettings({ lyricsTranslateLang: next });
+    showToast(
+      next === 'ms'
+        ? 'Terjemahan Lirik: Bahasa Melayu'
+        : next === 'en'
+          ? 'Terjemahan Lirik: English'
+          : 'Terjemahan Lirik: Off',
+    );
+  }, [settings.lyricsTranslateLang, updateSettings, showToast]);
+  const handleToggleOutputPopover = useCallback(() => {
+    setOutputPopoverOpen((v) => !v);
+  }, []);
+  const handleExportBackup = useCallback(() => {
+    const blob = new Blob([exportBackupJson()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `claudewaves-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Backup JSON dimuat turun!');
+  }, [exportBackupJson, showToast]);
   const handleLyricsOffsetChange = useCallback(
     (ms: number) => {
       const vid = playerStateRef.current.currentTrack?.videoId;
@@ -1360,11 +1434,30 @@ export const App: React.FC = () => {
       title: cur?.title ?? '',
       artist: cur?.artist ?? '',
     });
+    if (
+      settings.nowPlayingToast &&
+      player.state.isPlaying &&
+      cur &&
+      lastToastedVideoIdRef.current !== cur.videoId
+    ) {
+      lastToastedVideoIdRef.current = cur.videoId;
+      showDesktopTrackToast({
+        title: cur.title,
+        artist: cur.artist,
+        thumbnailUrl: cur.thumbnailUrl,
+        accentHex: activeAccent,
+        isDark,
+      });
+    }
   }, [
     player.state.isPlaying,
     player.state.currentTrack?.videoId,
     player.state.currentTrack?.title,
     player.state.currentTrack?.artist,
+    player.state.currentTrack?.thumbnailUrl,
+    settings.nowPlayingToast,
+    activeAccent,
+    isDark,
   ]);
 
   useEffect(() => {
@@ -1406,6 +1499,11 @@ export const App: React.FC = () => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       const typing = tag === 'INPUT' || tag === 'TEXTAREA';
 
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setCommandPaletteOpen((v) => !v);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setFullSheetOpen(false);
@@ -1874,8 +1972,18 @@ export const App: React.FC = () => {
     });
   };
 
+  const smartPlaylists = useMemo(
+    () => buildSmartPlaylists(library.stats, library.likedTracks, library.recentlyPlayed),
+    [library.stats, library.likedTracks, library.recentlyPlayed],
+  );
+
   const activePlaylist =
-    route.kind === 'playlist' ? library.playlists.find((p) => p.id === route.id) ?? null : null;
+    route.kind === 'playlist'
+      ? smartPlaylists.find((p) => p.id === route.id) ??
+        library.playlists.find((p) => p.id === route.id) ??
+        null
+      : null;
+  const activePlaylistIsSmart = Boolean(activePlaylist && isSmartPlaylistId(activePlaylist.id));
 
   const resolvedProfileAvatar = settings.profileAvatar || auth.yt.photoUrl || null;
   const resolvedProfileName =
@@ -1912,6 +2020,8 @@ export const App: React.FC = () => {
       floatingLyricsOpen={floatingLyricsOpen}
       onToggleFloatingLyrics={handleToggleFloatingLyrics}
       onOpenAmbientMode={handleOpenAmbientMode}
+      outputPopoverOpen={outputPopoverOpen}
+      onToggleOutputPopover={handleToggleOutputPopover}
     />
   );
 
@@ -2032,6 +2142,32 @@ export const App: React.FC = () => {
         <div className="cw-backdrop-grain" />
       </div>
 
+      {/* Slim Transparent Blended Window Strip (leaves native Win11 - □ × on top right) */}
+      {!ambientModeOpen && (
+        <div className="cw-titlebar">
+          <div className="cw-titlebar-left">
+            <img className="cw-titlebar-icon" src="/app_icon.png" alt="" />
+            <span className="cw-titlebar-title cw-ellipsis">
+              {player.state.currentTrack
+                ? `${player.state.currentTrack.title} — ${player.state.currentTrack.artist} · ClaudeWaves`
+                : 'ClaudeWaves Desktop'}
+            </span>
+          </div>
+          <div className="cw-titlebar-right">
+            <button
+              type="button"
+              className="cw-titlebar-cmd-btn"
+              title="Open Command Palette (Ctrl+Shift+P)"
+              onClick={() => setCommandPaletteOpen(true)}
+            >
+              <Sparkles size={11} color="var(--cw-accent)" />
+              <span>Commands</span>
+              <kbd>Ctrl+Shift+P</kbd>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Apple Music macOS: Full-Width Top Player Bar sits above the workspace */}
       {settings.layoutSkin === 'apple' && renderPlayerDock()}
 
@@ -2046,6 +2182,7 @@ export const App: React.FC = () => {
           recentCount={library.recentlyPlayed.length}
           downloadedCount={offlineEntries.length}
           offlineMode={settings.offlineMode}
+          smartPlaylists={smartPlaylists}
           playlists={library.playlists}
           stats={library.stats}
           eqPreset={settings.eqPreset}
@@ -2950,16 +3087,28 @@ export const App: React.FC = () => {
                       onPlayList={player.playTrack}
                       onSetRepeatMode={player.setRepeatMode}
                       refreshing={refreshingPlaylistKey === activePlaylist.id}
-                      onRefresh={() => handleRefreshPlaylist(activePlaylist)}
+                      onRefresh={activePlaylistIsSmart ? undefined : () => handleRefreshPlaylist(activePlaylist)}
                       downloadingBatch={downloadingBatch}
                       downloadedInListCount={
                         activePlaylist.tracks.filter((t) => offlineIds.has(t.videoId)).length
                       }
                       onDownloadAll={() => handleDownloadPlaylist(activePlaylist.tracks)}
-                      onDeletePlaylist={() => {
-                        deletePlaylist(activePlaylist.id);
-                        setRoute({ kind: 'home' });
-                      }}
+                      headerExtra={
+                        activePlaylistIsSmart ? (
+                          <span className="cw-offline-pill">
+                            <Sparkles size={12} />
+                            <span>Smart Mix • Auto-generated</span>
+                          </span>
+                        ) : undefined
+                      }
+                      onDeletePlaylist={
+                        activePlaylistIsSmart
+                          ? undefined
+                          : () => {
+                              deletePlaylist(activePlaylist.id);
+                              setRoute({ kind: 'home' });
+                            }
+                      }
                       renderTrackRow={renderTrackRow}
                     />
                   ) : (
@@ -3022,15 +3171,7 @@ export const App: React.FC = () => {
                     setOnboardingRepeat(true);
                     setOnboardingOpen(true);
                   }}
-                  onExportBackup={() => {
-                    const blob = new Blob([exportBackupJson()], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `claudewaves-backup-${new Date().toISOString().slice(0, 10)}.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
+                  onExportBackup={handleExportBackup}
                   onImportBackup={(raw) => {
                     importBackupJson(raw);
                     showToast('Backup restored!');
@@ -3071,6 +3212,7 @@ export const App: React.FC = () => {
             lyricsBounce={settings.lyricsBounce}
             lyricsDisplayMode={settings.lyricsDisplayMode}
             lyricsAutoRomanize={settings.lyricsAutoRomanize}
+            lyricsTranslateLang={settings.lyricsTranslateLang}
             lyricsOffsetMs={
               player.state.currentTrack
                 ? (library.lyricsOffsets[player.state.currentTrack.videoId] ?? 0)
@@ -3082,6 +3224,8 @@ export const App: React.FC = () => {
             onOpenArtist={openArtist}
             onLyricsDisplayModeChange={handleLyricsModeChange}
             onToggleLyricsAutoRomanize={handleToggleAutoRomanize}
+            onCycleLyricsTranslateLang={handleCycleTranslateLang}
+            onOpenQuoteModal={() => setQuoteModalOpen(true)}
             onLyricsOffsetChange={handleLyricsOffsetChange}
             onSeekTo={player.seekTo}
             onPlayQueueIndex={handlePlayQueueIndex}
@@ -3139,6 +3283,7 @@ export const App: React.FC = () => {
         lyricsBounce={settings.lyricsBounce}
         lyricsDisplayMode={settings.lyricsDisplayMode}
         lyricsAutoRomanize={settings.lyricsAutoRomanize}
+        lyricsTranslateLang={settings.lyricsTranslateLang}
         lyricsOffsetMs={
           player.state.currentTrack
             ? (library.lyricsOffsets[player.state.currentTrack.videoId] ?? 0)
@@ -3152,6 +3297,8 @@ export const App: React.FC = () => {
         onVolumeChange={(v) => updateSettings({ volume: Math.round(v) })}
         onLyricsDisplayModeChange={(lyricsDisplayMode) => updateSettings({ lyricsDisplayMode })}
         onToggleLyricsAutoRomanize={handleToggleAutoRomanize}
+        onCycleLyricsTranslateLang={handleCycleTranslateLang}
+        onOpenQuoteModal={() => setQuoteModalOpen(true)}
         onLyricsOffsetChange={(ms) => {
           if (player.state.currentTrack) {
             setTrackLyricsOffset(player.state.currentTrack.videoId, ms);
@@ -3307,8 +3454,71 @@ export const App: React.FC = () => {
         settings={settings}
         accentHex={activeAccent}
         intensity={intensity}
+        abLoop={player.state.abLoop}
+        audioOutputDevices={player.audioOutputDevices}
+        onSetLoopA={player.setLoopPointA}
+        onSetLoopB={player.setLoopPointB}
+        onClearLoop={player.clearAbLoop}
+        onRefreshOutputs={player.refreshOutputDevices}
         onUpdate={updateSettings}
         onClose={() => setEqPopupOpen(false)}
+      />
+
+      {/* Audio Output Device Switcher Popover */}
+      <AudioOutputPopover
+        open={outputPopoverOpen}
+        selectedDeviceId={settings.audioOutputDeviceId}
+        devices={player.audioOutputDevices}
+        intensity={intensity}
+        onSelect={(deviceId) => {
+          updateSettings({ audioOutputDeviceId: deviceId });
+          showToast(deviceId ? 'Output audio ditukar' : 'Output: System Default');
+        }}
+        onRefresh={player.refreshOutputDevices}
+        onClose={() => setOutputPopoverOpen(false)}
+      />
+
+      {/* Lyric Quote Card PNG Exporter Modal */}
+      <LyricQuoteModal
+        open={quoteModalOpen}
+        track={player.state.currentTrack}
+        lyrics={player.state.lyrics}
+        activeMs={getPlaybackPositionMs()}
+        offsetMs={
+          player.state.currentTrack
+            ? (library.lyricsOffsets[player.state.currentTrack.videoId] ?? 0)
+            : 0
+        }
+        autoRomanize={settings.lyricsAutoRomanize}
+        translateLang={settings.lyricsTranslateLang}
+        accentHex={activeAccent}
+        intensity={intensity}
+        onClose={() => setQuoteModalOpen(false)}
+        onToast={showToast}
+      />
+
+      {/* Global Command Palette (Ctrl+Shift+P) */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        playerState={player.state}
+        settings={settings}
+        intensity={intensity}
+        audioOutputDevices={player.audioOutputDevices}
+        smartPlaylists={smartPlaylists}
+        playlists={library.playlists}
+        recentTracks={library.recentlyPlayed}
+        onTogglePlayPause={player.togglePlayPause}
+        onNext={player.next}
+        onPrev={player.previous}
+        onPlayTrack={(t, list) => player.playTrack(t, list)}
+        onSelectRoute={handleSelectRoute}
+        onUpdateSettings={updateSettings}
+        onToggleAmbient={handleToggleAmbientMode}
+        onToggleEq={handleOpenEq}
+        onCycleSleep={handleCycleSleepTimer}
+        onOpenQuoteModal={() => setQuoteModalOpen(true)}
+        onExportBackup={handleExportBackup}
       />
 
       {/* Android 1:1 Splash Screen + 5-Step Onboarding Wizard */}

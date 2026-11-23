@@ -1,5 +1,6 @@
 /* Default: Neutral Clean Dark (Crisp White accent, rich velvety charcoal canvas — high WCAG contrast) */
 :root {
+  --cw-titlebar-h: 32px;
   --cw-accent: #ffffff;
   --cw-accent-2: #a1a1aa;
   --cw-on-accent: #0b0c10;
@@ -384,7 +385,7 @@ html[data-preset='comic'][data-theme='dark'] .cw-backdrop-vignette {
   gap: 10px;
   width: 100%;
   height: 100%;
-  padding: 10px 12px 130px;
+  padding: calc(10px + var(--cw-titlebar-h)) 12px 130px;
 }
 
 /* Floating Left Glass Sidebar */
@@ -2261,6 +2262,7 @@ html[data-preset='comic'] .cw-sort-menu {
 .cw-fullplayer {
   position: fixed;
   inset: 0;
+  padding-top: var(--cw-titlebar-h);
   z-index: 72;
   overflow: hidden;
   display: flex;
@@ -3320,7 +3322,7 @@ html[data-theme='light'] .cw-dock-cover-bg {
 
 .cw-toast {
   position: fixed;
-  top: 22px;
+  top: calc(14px + var(--cw-titlebar-h));
   left: 50%;
   transform: translateX(-50%);
   z-index: 95;
@@ -3437,7 +3439,7 @@ html[data-theme='light'] .cw-mini-scrim {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: 30px 16px 12px;
 }
 
 .cw-mini-art {
@@ -5408,7 +5410,7 @@ html[data-skin='spotify'][data-theme='light'] {
 
 html[data-skin='spotify'] .cw-workspace {
   height: 100%;
-  padding: 8px 8px 86px;
+  padding: calc(8px + var(--cw-titlebar-h)) 8px 86px;
   gap: 8px;
 }
 
@@ -5963,7 +5965,7 @@ html[data-skin='ytmusic'][data-theme='light'] {
 
 html[data-skin='ytmusic'] .cw-workspace {
   height: 100%;
-  padding: 0 0 72px;
+  padding: var(--cw-titlebar-h) 0 72px;
   gap: 0;
 }
 
@@ -6463,7 +6465,7 @@ html[data-skin='apple'][data-theme='light'] {
 /* Apple Music Top Player Bar (56px) */
 .cw-apple-topbar {
   position: fixed;
-  top: 0;
+  top: var(--cw-titlebar-h);
   left: 0;
   right: 0;
   height: 56px;
@@ -6650,7 +6652,7 @@ html[data-skin='apple'][data-theme='light'] {
 /* Apple Music Workspace & Sidebar */
 html[data-skin='apple'] .cw-workspace {
   height: 100%;
-  padding: 56px 0 0;
+  padding: calc(56px + var(--cw-titlebar-h)) 0 0;
   gap: 0;
 }
 
@@ -7636,7 +7638,7 @@ html[data-skin='tidal'][data-theme='light'] {
 
 html[data-skin='tidal'] .cw-workspace {
   height: 100%;
-  padding: 0 0 78px;
+  padding: var(--cw-titlebar-h) 0 78px;
   gap: 0;
 }
 
@@ -7946,7 +7948,7 @@ html[data-skin='soundcloud'][data-theme='light'] {
 
 html[data-skin='soundcloud'] .cw-workspace {
   height: 100%;
-  padding: 0 0 66px;
+  padding: var(--cw-titlebar-h) 0 66px;
   gap: 0;
 }
 
@@ -8295,7 +8297,7 @@ html[data-skin='nothing'] .cw-backdrop {
 
 html[data-skin='nothing'] .cw-workspace {
   height: 100%;
-  padding: 10px 10px 94px;
+  padding: calc(10px + var(--cw-titlebar-h)) 10px 94px;
   gap: 10px;
 }
 
@@ -9809,4 +9811,396 @@ html[data-theme='light'] .cw-quick-eq-select option {
   opacity: 0.78;
   color: var(--cw-amb-color, #93c5fd);
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.75);
+}
+
+/* === v1.4.9 Slim Blended Titlebar, Audio FX/Output Switcher, Translate & Modals === */
+html[data-fullscreen='true'],
+html[data-mini='true'] {
+  --cw-titlebar-h: 0px;
+}
+
+.cw-titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--cw-titlebar-h);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 148px 0 12px;
+  background: transparent;
+  -webkit-app-region: drag;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.cw-titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cw-titlebar-icon {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.cw-titlebar-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--cw-text-muted);
+}
+
+.cw-titlebar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.cw-titlebar-cmd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  height: 21px;
+  border-radius: 999px;
+  border: 1px solid var(--cw-border-subtle);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cw-text-muted);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+html[data-theme='light'] .cw-titlebar-cmd-btn {
+  background: rgba(15, 23, 42, 0.05);
+}
+
+html[data-preset='comic'] .cw-titlebar-cmd-btn {
+  border-color: var(--cw-text);
+}
+
+.cw-titlebar-cmd-btn:hover {
+  background: var(--cw-tile-bg);
+  color: var(--cw-text);
+  border-color: var(--cw-accent);
+}
+
+.cw-titlebar-cmd-btn kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  opacity: 0.72;
+}
+
+/* Lyric Translation Sub-Line */
+.cw-lyric-translated {
+  font-size: 0.7em;
+  font-weight: 500;
+  line-height: 1.35;
+  margin-top: 2px;
+  color: var(--cw-accent);
+  opacity: 0.78;
+  text-shadow: none;
+}
+
+.cw-side-lyric-line[data-active='true'] .cw-lyric-translated,
+.cw-full-lyric-line[data-active='true'] .cw-lyric-translated {
+  opacity: 0.96;
+}
+
+/* Quick EQ Audio FX (Pitch / Reverb / A-B Loop) */
+.cw-quick-eq-fx {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cw-border-subtle);
+}
+
+.cw-quick-eq-fx-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.cw-quick-eq-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cw-quick-eq-slider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.cw-quick-eq-fx-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cw-ab-loop-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cw-offset-btn[data-active='true'] {
+  background: var(--cw-accent);
+  color: var(--cw-on-accent);
+  border-color: transparent;
+}
+
+/* Audio Output Switcher Popover */
+.cw-output-popover {
+  position: fixed;
+  right: 18px;
+  bottom: 102px;
+  width: min(320px, calc(100vw - 32px));
+  z-index: 79;
+  border-radius: 20px;
+  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.48);
+  animation: cw-home-rise 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-skin='apple'] .cw-output-popover {
+  top: calc(var(--cw-titlebar-h) + 64px);
+  bottom: auto;
+  right: 16px;
+}
+
+.cw-output-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.cw-output-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: var(--cw-tile-bg);
+  color: var(--cw-text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.cw-output-row:hover {
+  background: var(--cw-row-hover);
+}
+
+.cw-output-row[data-active='true'] {
+  background: var(--cw-row-active);
+  border-color: var(--cw-accent);
+  color: var(--cw-accent);
+}
+
+/* Global Command Palette (Ctrl+Shift+P) */
+.cw-cmd-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 170;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: min(14vh, 110px) 16px 20px;
+  background: rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(12px);
+  animation: cw-page-enter 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-theme='light'] .cw-cmd-backdrop {
+  background: rgba(235, 240, 246, 0.56);
+}
+
+.cw-cmd-shell {
+  width: min(600px, 100%);
+  border-radius: 20px;
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.55);
+}
+
+.cw-cmd-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 10px;
+  border-bottom: 1px solid var(--cw-border-subtle);
+}
+
+.cw-cmd-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--cw-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cw-cmd-input::placeholder {
+  color: var(--cw-text-muted);
+}
+
+.cw-cmd-kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--cw-border-subtle);
+  color: var(--cw-text-muted);
+}
+
+.cw-cmd-results {
+  margin-top: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cw-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--cw-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cw-cmd-row[data-active='true'] {
+  background: var(--cw-row-active);
+  border-color: var(--cw-border-subtle);
+}
+
+.cw-cmd-row-icon {
+  color: var(--cw-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cw-cmd-cat {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--cw-tile-bg);
+  color: var(--cw-text-muted);
+  white-space: nowrap;
+}
+
+/* Lyric Quote Card PNG Exporter Modal */
+.cw-quote-backdrop {
+  z-index: 160;
+}
+
+.cw-quote-modal {
+  width: min(880px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 24px;
+}
+
+.cw-quote-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 780px) {
+  .cw-quote-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cw-quote-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cw-quote-line-picker {
+  max-height: 270px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-right: 4px;
+}
+
+.cw-quote-line-item {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--cw-tile-rim);
+  background: var(--cw-tile-bg);
+  color: var(--cw-text);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 130ms ease, border-color 130ms ease;
+}
+
+.cw-quote-line-item:hover {
+  background: var(--cw-row-hover);
+}
+
+.cw-quote-line-item[data-active='true'] {
+  background: var(--cw-row-active);
+  border-color: var(--cw-accent);
+}
+
+.cw-quote-preview-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.cw-quote-canvas-preview {
+  max-height: 410px;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42);
 }

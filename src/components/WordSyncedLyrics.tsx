@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { RotateCcw, Timer } from 'lucide-react';
+import { Languages, RotateCcw, Share2, Timer } from 'lucide-react';
 import { usePlaybackPositionMs } from '../hooks/playbackClock';
 import type {
   LyricLine,
@@ -7,6 +7,7 @@ import type {
   LyricsDisplayMode,
   LyricsFontSize,
   LyricsResult,
+  LyricsTranslateLang,
 } from '../types';
 
 interface WordSyncedLyricsProps {
@@ -14,11 +15,14 @@ interface WordSyncedLyricsProps {
   offsetMs: number;
   displayMode: LyricsDisplayMode;
   autoRomanize?: boolean;
+  translateLang?: LyricsTranslateLang;
   large?: boolean;
   fontSize?: LyricsFontSize;
   bounceStyle?: LyricsBounceStyle;
   onDisplayModeChange: (mode: LyricsDisplayMode) => void;
   onToggleAutoRomanize?: () => void;
+  onCycleTranslateLang?: () => void;
+  onOpenQuoteModal?: () => void;
   onOffsetChange: (nextMs: number) => void;
   onSeekTo: (ms: number) => void;
 }
@@ -30,6 +34,7 @@ interface LyricLineRowProps {
   activeMs: number; // -1 for inactive rows so React.memo skips non-active lines!
   wordMode: boolean;
   showRomanized: boolean;
+  showTranslated: boolean;
   large: boolean;
   offsetMs: number;
   onSeekTo: (ms: number) => void;
@@ -37,11 +42,14 @@ interface LyricLineRowProps {
 }
 
 const LyricLineRow = React.memo<LyricLineRowProps>(
-  ({ line, isActive, isPast, activeMs, wordMode, showRomanized, large, offsetMs, onSeekTo, lineRef }) => {
+  ({ line, isActive, isPast, activeMs, wordMode, showRomanized, showTranslated, large, offsetMs, onSeekTo, lineRef }) => {
     const words = wordMode && line.words && line.words.length > 0 ? line.words : null;
     const cls = large ? 'cw-full-lyric-line' : 'cw-side-lyric-line';
     const romLine = showRomanized && line.romanized ? (
       <div className="cw-lyric-romanized">{line.romanized}</div>
+    ) : null;
+    const transLine = showTranslated && line.translated ? (
+      <div className="cw-lyric-translated">{line.translated}</div>
     ) : null;
 
     if (!words) {
@@ -55,6 +63,7 @@ const LyricLineRow = React.memo<LyricLineRowProps>(
         >
           <div>{line.text}</div>
           {romLine}
+          {transLine}
         </div>
       );
     }
@@ -107,6 +116,7 @@ const LyricLineRow = React.memo<LyricLineRowProps>(
           })}
         </div>
         {romLine}
+        {transLine}
       </div>
     );
   },
@@ -123,11 +133,14 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
   offsetMs,
   displayMode,
   autoRomanize = true,
+  translateLang = 'off',
   large = false,
   fontSize = 'normal',
   bounceStyle = 'expressive',
   onDisplayModeChange,
   onToggleAutoRomanize,
+  onCycleTranslateLang,
+  onOpenQuoteModal,
   onOffsetChange,
   onSeekTo,
 }) => {
@@ -229,23 +242,53 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
   if (lyrics.kind === 'plain') {
     const plainLines = lyrics.text.split(/\r?\n/);
     const romLines = lyrics.romanizedLines;
+    const transLines = lyrics.translatedLines;
     const hasRom = Boolean(autoRomanize && romLines && romLines.some(Boolean));
+    const hasTrans = Boolean(translateLang !== 'off' && transLines && transLines.some(Boolean));
+    const transLabel = translateLang === 'ms' ? 'BM' : translateLang === 'en' ? 'EN' : 'Trans';
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-        {onToggleAutoRomanize && (
+        {(onToggleAutoRomanize || onCycleTranslateLang || onOpenQuoteModal) && (
           <div className="cw-lyrics-toolbar">
             <span className="cw-lyric-source-tag" style={{ margin: 0, padding: 0 }}>
               Plain Lyrics
             </span>
-            <button
-              type="button"
-              className="cw-offset-toggle-pill"
-              data-active={autoRomanize}
-              onClick={onToggleAutoRomanize}
-              data-tip="Auto-romanize non-Latin lyrics"
-            >
-              <span>Aa Romaji</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+              {onToggleAutoRomanize && (
+                <button
+                  type="button"
+                  className="cw-offset-toggle-pill"
+                  data-active={autoRomanize}
+                  onClick={onToggleAutoRomanize}
+                  data-tip="Auto-romanize non-Latin lyrics"
+                >
+                  <span>Aa Romaji</span>
+                </button>
+              )}
+              {onCycleTranslateLang && (
+                <button
+                  type="button"
+                  className="cw-offset-toggle-pill"
+                  data-active={translateLang !== 'off'}
+                  onClick={onCycleTranslateLang}
+                  data-tip="Translate Lyrics (Off / BM / EN)"
+                >
+                  <Languages size={11} />
+                  <span>{transLabel}</span>
+                </button>
+              )}
+              {onOpenQuoteModal && (
+                <button
+                  type="button"
+                  className="cw-offset-toggle-pill"
+                  onClick={onOpenQuoteModal}
+                  data-tip="Export Lyric Quote Card (PNG)"
+                >
+                  <Share2 size={11} />
+                  <span>Quote</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
         <div
@@ -258,6 +301,9 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
               {hasRom && romLines?.[idx] && (
                 <div className="cw-lyric-romanized">{romLines[idx]}</div>
               )}
+              {hasTrans && transLines?.[idx] && (
+                <div className="cw-lyric-translated">{transLines[idx]}</div>
+              )}
             </div>
           ))}
         </div>
@@ -267,6 +313,7 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
 
   const offsetLabel =
     offsetMs === 0 ? 'Sync 0ms' : `Sync ${offsetMs > 0 ? '+' : ''}${offsetMs}ms`;
+  const transLabel = translateLang === 'ms' ? 'BM' : translateLang === 'en' ? 'EN' : 'Trans';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -274,7 +321,7 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
         <span className="cw-lyric-source-tag" style={{ margin: 0, padding: 0 }}>
           {lyrics.source || 'Synced'}
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <div className="cw-lyrics-mode-pills" role="tablist" aria-label="Lyrics display style">
             <button
               type="button"
@@ -302,6 +349,29 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
               data-tip="Auto-romanize non-Latin lyrics"
             >
               <span>Aa Romaji</span>
+            </button>
+          )}
+          {onCycleTranslateLang && (
+            <button
+              type="button"
+              className="cw-offset-toggle-pill"
+              data-active={translateLang !== 'off'}
+              onClick={onCycleTranslateLang}
+              data-tip="Translate Lyrics (Off / BM / EN)"
+            >
+              <Languages size={11} />
+              <span>{transLabel}</span>
+            </button>
+          )}
+          {onOpenQuoteModal && (
+            <button
+              type="button"
+              className="cw-offset-toggle-pill"
+              onClick={onOpenQuoteModal}
+              data-tip="Export Lyric Quote Card (PNG)"
+            >
+              <Share2 size={11} />
+              <span>Quote</span>
             </button>
           )}
           <button
@@ -375,6 +445,7 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
               activeMs={isActive && displayMode === 'word' ? effectiveMs : -1}
               wordMode={displayMode === 'word'}
               showRomanized={autoRomanize}
+              showTranslated={translateLang !== 'off'}
               large={large}
               offsetMs={offsetMs}
               onSeekTo={onSeekTo}

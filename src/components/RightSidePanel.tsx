@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { GlassButton, GlassCard, GlassSegmented } from '@zakisheriff/liquid-glass';
 import { Maximize2, Trash2, X } from 'lucide-react';
 import type { PlayerState } from '../hooks/usePlayer';
-import type { LyricsBounceStyle, LyricsDisplayMode, LyricsFontSize } from '../types';
+import type { LyricsBounceStyle, LyricsDisplayMode, LyricsFontSize, LyricsTranslateLang } from '../types';
 import { CoverArtWaves } from './CoverArtWaves';
 import { WordSyncedLyrics } from './WordSyncedLyrics';
 
@@ -17,6 +17,7 @@ interface RightSidePanelProps {
   lyricsBounce: LyricsBounceStyle;
   lyricsDisplayMode: LyricsDisplayMode;
   lyricsAutoRomanize?: boolean;
+  lyricsTranslateLang?: LyricsTranslateLang;
   lyricsOffsetMs: number;
   onSelectTab: (tab: 'lyrics' | 'queue') => void;
   onClose: () => void;
@@ -24,6 +25,8 @@ interface RightSidePanelProps {
   onOpenArtist: (artistName: string) => void;
   onLyricsDisplayModeChange: (mode: LyricsDisplayMode) => void;
   onToggleLyricsAutoRomanize?: () => void;
+  onCycleLyricsTranslateLang?: () => void;
+  onOpenQuoteModal?: () => void;
   onLyricsOffsetChange: (ms: number) => void;
   onSeekTo: (ms: number) => void;
   onPlayQueueIndex: (idx: number) => void;
@@ -41,6 +44,7 @@ export const RightSidePanel: React.FC<RightSidePanelProps> = React.memo(({
   lyricsBounce,
   lyricsDisplayMode,
   lyricsAutoRomanize = true,
+  lyricsTranslateLang = 'off',
   lyricsOffsetMs,
   onSelectTab,
   onClose,
@@ -48,6 +52,8 @@ export const RightSidePanel: React.FC<RightSidePanelProps> = React.memo(({
   onOpenArtist,
   onLyricsDisplayModeChange,
   onToggleLyricsAutoRomanize,
+  onCycleLyricsTranslateLang,
+  onOpenQuoteModal,
   onLyricsOffsetChange,
   onSeekTo,
   onPlayQueueIndex,
@@ -166,11 +172,14 @@ export const RightSidePanel: React.FC<RightSidePanelProps> = React.memo(({
               offsetMs={lyricsOffsetMs}
               displayMode={lyricsDisplayMode}
               autoRomanize={lyricsAutoRomanize}
+              translateLang={lyricsTranslateLang}
               large={false}
               fontSize={lyricsFontSize}
               bounceStyle={lyricsBounce}
               onDisplayModeChange={onLyricsDisplayModeChange}
               onToggleAutoRomanize={onToggleLyricsAutoRomanize}
+              onCycleTranslateLang={onCycleLyricsTranslateLang}
+              onOpenQuoteModal={onOpenQuoteModal}
               onOffsetChange={onLyricsOffsetChange}
               onSeekTo={onSeekTo}
             />
