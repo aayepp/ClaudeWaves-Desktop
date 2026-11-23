@@ -77,6 +77,7 @@ interface NowPlayingSheetProps {
   lyricsFontSize: LyricsFontSize;
   lyricsBounce: LyricsBounceStyle;
   lyricsDisplayMode: LyricsDisplayMode;
+  lyricsAutoRomanize?: boolean;
   lyricsOffsetMs: number;
   videoMode: boolean;
   videoQuality: number;
@@ -85,6 +86,7 @@ interface NowPlayingSheetProps {
   onTabChange: (tab: 'lyrics' | 'queue') => void;
   onVolumeChange: (v: number) => void;
   onLyricsDisplayModeChange: (mode: LyricsDisplayMode) => void;
+  onToggleLyricsAutoRomanize?: () => void;
   onLyricsOffsetChange: (ms: number) => void;
   onToggleVideoMode: () => void;
   onVideoQualityChange: (q: number) => void;
@@ -116,6 +118,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
   lyricsFontSize,
   lyricsBounce,
   lyricsDisplayMode,
+  lyricsAutoRomanize = true,
   lyricsOffsetMs,
   videoMode,
   videoQuality,
@@ -124,6 +127,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
   onTabChange,
   onVolumeChange,
   onLyricsDisplayModeChange,
+  onToggleLyricsAutoRomanize,
   onLyricsOffsetChange,
   onToggleVideoMode,
   onVideoQualityChange,
@@ -403,10 +407,12 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
                 lyrics={player.lyrics}
                 offsetMs={lyricsOffsetMs}
                 displayMode={lyricsDisplayMode}
+                autoRomanize={lyricsAutoRomanize}
                 large={true}
                 fontSize={lyricsFontSize}
                 bounceStyle={lyricsBounce}
                 onDisplayModeChange={onLyricsDisplayModeChange}
+                onToggleAutoRomanize={onToggleLyricsAutoRomanize}
                 onOffsetChange={onLyricsOffsetChange}
                 onSeekTo={onSeekTo}
               />

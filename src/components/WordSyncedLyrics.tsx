@@ -13,10 +13,12 @@ interface WordSyncedLyricsProps {
   lyrics: LyricsResult;
   offsetMs: number;
   displayMode: LyricsDisplayMode;
+  autoRomanize?: boolean;
   large?: boolean;
   fontSize?: LyricsFontSize;
   bounceStyle?: LyricsBounceStyle;
   onDisplayModeChange: (mode: LyricsDisplayMode) => void;
+  onToggleAutoRomanize?: () => void;
   onOffsetChange: (nextMs: number) => void;
   onSeekTo: (ms: number) => void;
 }
@@ -27,6 +29,7 @@ interface LyricLineRowProps {
   isPast: boolean;
   activeMs: number; // -1 for inactive rows so React.memo skips non-active lines!
   wordMode: boolean;
+  showRomanized: boolean;
   large: boolean;
   offsetMs: number;
   onSeekTo: (ms: number) => void;
@@ -34,9 +37,12 @@ interface LyricLineRowProps {
 }
 
 const LyricLineRow = React.memo<LyricLineRowProps>(
-  ({ line, isActive, isPast, activeMs, wordMode, large, offsetMs, onSeekTo, lineRef }) => {
+  ({ line, isActive, isPast, activeMs, wordMode, showRomanized, large, offsetMs, onSeekTo, lineRef }) => {
     const words = wordMode && line.words && line.words.length > 0 ? line.words : null;
     const cls = large ? 'cw-full-lyric-line' : 'cw-side-lyric-line';
+    const romLine = showRomanized && line.romanized ? (
+      <div className="cw-lyric-romanized">{line.romanized}</div>
+    ) : null;
 
     if (!words) {
       return (
@@ -47,7 +53,8 @@ const LyricLineRow = React.memo<LyricLineRowProps>(
           data-past={isPast}
           onClick={() => onSeekTo(Math.max(0, line.timeMs - offsetMs))}
         >
-          {line.text}
+          <div>{line.text}</div>
+          {romLine}
         </div>
       );
     }
@@ -60,43 +67,46 @@ const LyricLineRow = React.memo<LyricLineRowProps>(
         data-past={isPast}
         onClick={() => onSeekTo(Math.max(0, line.timeMs - offsetMs))}
       >
-        {words.map((w, wi) => {
-          let state: 'idle' | 'filling' | 'sung' = 'idle';
-          let fillStyle: React.CSSProperties | undefined;
+        <div>
+          {words.map((w, wi) => {
+            let state: 'idle' | 'filling' | 'sung' = 'idle';
+            let fillStyle: React.CSSProperties | undefined;
 
-          if (isPast) {
-            state = 'sung';
-          } else if (isActive && activeMs >= 0) {
-            const dur = Math.max(80, w.endMs - w.startMs);
-            if (activeMs >= w.endMs) {
+            if (isPast) {
               state = 'sung';
-            } else if (activeMs >= w.startMs) {
-              const linear = Math.max(0, Math.min(1, (activeMs - w.startMs) / dur));
-              // Android ModernLyricsKaraokeCanvas ease-out sweep (1 - (1 - t)^1.4)
-              const p = 1 - Math.pow(1 - linear, 1.4);
-              const pct = Math.round(p * 100);
-              state = 'filling';
-              fillStyle = { '--cw-fill': `${pct}%` } as React.CSSProperties;
+            } else if (isActive && activeMs >= 0) {
+              const dur = Math.max(80, w.endMs - w.startMs);
+              if (activeMs >= w.endMs) {
+                state = 'sung';
+              } else if (activeMs >= w.startMs) {
+                const linear = Math.max(0, Math.min(1, (activeMs - w.startMs) / dur));
+                // Android ModernLyricsKaraokeCanvas ease-out sweep (1 - (1 - t)^1.4)
+                const p = 1 - Math.pow(1 - linear, 1.4);
+                const pct = Math.round(p * 100);
+                state = 'filling';
+                fillStyle = { '--cw-fill': `${pct}%` } as React.CSSProperties;
+              }
             }
-          }
 
-          return (
-            <React.Fragment key={`${w.startMs}-${wi}`}>
-              <span
-                className="cw-lyric-word"
-                data-state={state}
-                style={fillStyle}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSeekTo(Math.max(0, w.startMs - offsetMs));
-                }}
-              >
-                {w.text}
-              </span>
-              {wi < words.length - 1 ? ' ' : ''}
-            </React.Fragment>
-          );
-        })}
+            return (
+              <React.Fragment key={`${w.startMs}-${wi}`}>
+                <span
+                  className="cw-lyric-word"
+                  data-state={state}
+                  style={fillStyle}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSeekTo(Math.max(0, w.startMs - offsetMs));
+                  }}
+                >
+                  {w.text}
+                </span>
+                {wi < words.length - 1 ? ' ' : ''}
+              </React.Fragment>
+            );
+          })}
+        </div>
+        {romLine}
       </div>
     );
   },
@@ -112,10 +122,12 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
   lyrics,
   offsetMs,
   displayMode,
+  autoRomanize = true,
   large = false,
   fontSize = 'normal',
   bounceStyle = 'expressive',
   onDisplayModeChange,
+  onToggleAutoRomanize,
   onOffsetChange,
   onSeekTo,
 }) => {
@@ -215,19 +227,41 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
     );
   }
   if (lyrics.kind === 'plain') {
+    const plainLines = lyrics.text.split(/\r?\n/);
+    const romLines = lyrics.romanizedLines;
+    const hasRom = Boolean(autoRomanize && romLines && romLines.some(Boolean));
     return (
-      <pre
-        style={{
-          whiteSpace: 'pre-wrap',
-          fontFamily: 'inherit',
-          margin: 0,
-          lineHeight: 1.75,
-          fontSize: large ? 18 : 14,
-          padding: 8,
-        }}
-      >
-        {lyrics.text}
-      </pre>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+        {onToggleAutoRomanize && (
+          <div className="cw-lyrics-toolbar">
+            <span className="cw-lyric-source-tag" style={{ margin: 0, padding: 0 }}>
+              Plain Lyrics
+            </span>
+            <button
+              type="button"
+              className="cw-offset-toggle-pill"
+              data-active={autoRomanize}
+              onClick={onToggleAutoRomanize}
+              data-tip="Auto-romanize non-Latin lyrics"
+            >
+              <span>Aa Romaji</span>
+            </button>
+          </div>
+        )}
+        <div
+          className="cw-plain-lyrics-wrap"
+          style={{ fontSize: large ? 18 : 14 }}
+        >
+          {plainLines.map((ln, idx) => (
+            <div key={idx} className="cw-plain-lyric-row">
+              <div>{ln || '\u00A0'}</div>
+              {hasRom && romLines?.[idx] && (
+                <div className="cw-lyric-romanized">{romLines[idx]}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
@@ -259,6 +293,17 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
               Word
             </button>
           </div>
+          {onToggleAutoRomanize && (
+            <button
+              type="button"
+              className="cw-offset-toggle-pill"
+              data-active={autoRomanize}
+              onClick={onToggleAutoRomanize}
+              data-tip="Auto-romanize non-Latin lyrics"
+            >
+              <span>Aa Romaji</span>
+            </button>
+          )}
           <button
             type="button"
             className="cw-offset-toggle-pill"
@@ -329,6 +374,7 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
               isPast={isPast}
               activeMs={isActive && displayMode === 'word' ? effectiveMs : -1}
               wordMode={displayMode === 'word'}
+              showRomanized={autoRomanize}
               large={large}
               offsetMs={offsetMs}
               onSeekTo={onSeekTo}

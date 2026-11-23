@@ -70,6 +70,10 @@ function mergeLibrary(parsed: Partial<LibraryData>, fallback: LibraryData): Libr
         typeof rawSettings.autoSyncPlaylists === 'boolean'
           ? rawSettings.autoSyncPlaylists
           : fallback.settings.autoSyncPlaylists,
+      lyricsAutoRomanize:
+        typeof rawSettings.lyricsAutoRomanize === 'boolean'
+          ? rawSettings.lyricsAutoRomanize
+          : fallback.settings.lyricsAutoRomanize,
       closeToTray:
         typeof rawSettings.closeToTray === 'boolean'
           ? rawSettings.closeToTray

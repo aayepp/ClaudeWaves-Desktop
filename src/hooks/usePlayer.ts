@@ -4,7 +4,7 @@ import {
   fetchSponsorBlockApi,
   type SponsorSegment,
 } from '../api/extras';
-import { detectLyricChorusMs, fetchSyncedLyrics } from '../api/lyrics';
+import { detectLyricChorusMs, fetchSyncedLyrics, hasNonLatinScript, romanizeLyricsApi } from '../api/lyrics';
 import { getOfflineAudioUrl } from '../api/offline';
 import { fetchUpNextRadio, resolveTrackStream } from '../api/youtube';
 import { combineEqWithAutoEq } from '../data/autoeq';
@@ -443,6 +443,34 @@ export function usePlayer(
         }
         return { ...prev, lyrics, bestPart };
       });
+
+      if (lyrics.kind === 'synced' && hasNonLatinScript(lyrics.lines.map((l) => l.text))) {
+        romanizeLyricsApi(
+          track.videoId,
+          lyrics.lines.map((l) => l.text),
+        ).then((subLines) => {
+          if (!subLines || requestTokenRef.current !== token) return;
+          setState((prev) => {
+            if (prev.lyrics.kind !== 'synced') return prev;
+            const enriched = prev.lyrics.lines.map((ln, idx) => ({
+              ...ln,
+              ...(subLines[idx] ? { romanized: subLines[idx]! } : {}),
+            }));
+            return { ...prev, lyrics: { ...prev.lyrics, lines: enriched } };
+          });
+        });
+      } else if (lyrics.kind === 'plain') {
+        const plainLines = lyrics.text.split(/\r?\n/);
+        if (hasNonLatinScript(plainLines)) {
+          romanizeLyricsApi(track.videoId, plainLines).then((subLines) => {
+            if (!subLines || requestTokenRef.current !== token) return;
+            setState((prev) => {
+              if (prev.lyrics.kind !== 'plain') return prev;
+              return { ...prev, lyrics: { ...prev.lyrics, romanizedLines: subLines } };
+            });
+          });
+        }
+      }
     });
 
     fetchBestPartApi(track.videoId).then(({ bestPartMs, source }) => {

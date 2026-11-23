@@ -16,12 +16,14 @@ interface RightSidePanelProps {
   lyricsFontSize: LyricsFontSize;
   lyricsBounce: LyricsBounceStyle;
   lyricsDisplayMode: LyricsDisplayMode;
+  lyricsAutoRomanize?: boolean;
   lyricsOffsetMs: number;
   onSelectTab: (tab: 'lyrics' | 'queue') => void;
   onClose: () => void;
   onExpandFull: () => void;
   onOpenArtist: (artistName: string) => void;
   onLyricsDisplayModeChange: (mode: LyricsDisplayMode) => void;
+  onToggleLyricsAutoRomanize?: () => void;
   onLyricsOffsetChange: (ms: number) => void;
   onSeekTo: (ms: number) => void;
   onPlayQueueIndex: (idx: number) => void;
@@ -38,12 +40,14 @@ export const RightSidePanel: React.FC<RightSidePanelProps> = React.memo(({
   lyricsFontSize,
   lyricsBounce,
   lyricsDisplayMode,
+  lyricsAutoRomanize = true,
   lyricsOffsetMs,
   onSelectTab,
   onClose,
   onExpandFull,
   onOpenArtist,
   onLyricsDisplayModeChange,
+  onToggleLyricsAutoRomanize,
   onLyricsOffsetChange,
   onSeekTo,
   onPlayQueueIndex,
@@ -161,10 +165,12 @@ export const RightSidePanel: React.FC<RightSidePanelProps> = React.memo(({
               lyrics={player.lyrics}
               offsetMs={lyricsOffsetMs}
               displayMode={lyricsDisplayMode}
+              autoRomanize={lyricsAutoRomanize}
               large={false}
               fontSize={lyricsFontSize}
               bounceStyle={lyricsBounce}
               onDisplayModeChange={onLyricsDisplayModeChange}
+              onToggleAutoRomanize={onToggleLyricsAutoRomanize}
               onOffsetChange={onLyricsOffsetChange}
               onSeekTo={onSeekTo}
             />

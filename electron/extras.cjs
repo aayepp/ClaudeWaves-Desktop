@@ -693,10 +693,177 @@ async function fetchSponsorBlockSegments(videoId) {
   }
 }
 
+const ROMANIZE_ENDPOINT = 'https://translate.googleapis.com/translate_a/single';
+const MAX_ROMANIZE_BATCH_CHARS = 3500;
+const MAX_ROMANIZE_CACHE = 40;
+const ROMANIZE_MARKER_RE = /\uE000[^\uE001]*\uE001/g;
+const romanizeCache = new Map();
+
+function hasNonLatinLettersText(text) {
+  for (const ch of String(text || '')) {
+    if (/\p{L}/u.test(ch) && !/\p{Script=Latin}/u.test(ch)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizeComparableLyric(text) {
+  return String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function getCachedRomanize(key) {
+  if (!romanizeCache.has(key)) return null;
+  const val = romanizeCache.get(key);
+  romanizeCache.delete(key);
+  romanizeCache.set(key, val);
+  return val;
+}
+
+function putCachedRomanize(key, val) {
+  if (romanizeCache.has(key)) romanizeCache.delete(key);
+  romanizeCache.set(key, val);
+  while (romanizeCache.size > MAX_ROMANIZE_CACHE) {
+    const oldest = romanizeCache.keys().next().value;
+    if (oldest) romanizeCache.delete(oldest);
+    else break;
+  }
+}
+
+async function requestRomanizeBatch(slots) {
+  const payload = slots
+    .map((slot, idx) => (idx > 0 ? `\n\uE000${String(idx).padStart(4, '0')}\uE001\n${slot.text}` : slot.text))
+    .join('');
+  const form = new URLSearchParams();
+  form.set('client', 'dict-chrome-ex');
+  form.set('sl', 'auto');
+  form.set('tl', 'en');
+  form.set('dt', 'rm');
+  form.set('q', payload);
+
+  const res = await fetch(ROMANIZE_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+      'User-Agent': 'ClaudeWaves-Desktop/1.4',
+      Accept: 'application/json',
+    },
+    body: form.toString(),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) return null;
+  const root = await res.json().catch(() => null);
+  if (!Array.isArray(root) || !Array.isArray(root[0])) return null;
+
+  const sourceLanguage = typeof root[2] === 'string' ? root[2] : '';
+  const body = root[0]
+    .map((seg) => (Array.isArray(seg) && typeof seg[3] === 'string' ? seg[3] : ''))
+    .join('');
+  if (!body.trim()) return null;
+
+  let parts = body.split(ROMANIZE_MARKER_RE).map((s) => s.trim());
+  if (parts.length !== slots.length && slots.length > 1) {
+    const lineSplit = body
+      .split(/\r?\n/)
+      .map((s) => s.replace(ROMANIZE_MARKER_RE, '').trim())
+      .filter(Boolean);
+    if (lineSplit.length === slots.length) {
+      parts = lineSplit;
+    }
+  }
+  if (parts.length !== slots.length || parts.some((p) => !p)) return null;
+  return { sourceLanguage, translations: parts };
+}
+
+async function romanizeLyricLines(trackId, lines) {
+  if (!Array.isArray(lines) || lines.length === 0) {
+    return { status: 'unavailable', subLines: [] };
+  }
+
+  const slots = [];
+  lines.forEach((rawLine, index) => {
+    const text = String(rawLine || '').trim();
+    if (!text) return;
+    const isHeader = text.length >= 3 && text.startsWith('[') && text.endsWith(']');
+    const inner = isHeader ? text.slice(1, -1).trim() : text;
+    if (inner) {
+      slots.push({ lineIndex: index, text: inner, isHeader });
+    }
+  });
+
+  if (slots.length === 0 || !slots.some((s) => hasNonLatinLettersText(s.text))) {
+    return { status: 'already_latin', subLines: [] };
+  }
+
+  const cacheKey = `${String(trackId || '')}|${slots.length}|${slots[0]?.text || ''}|${slots[slots.length - 1]?.text || ''}`;
+  const cached = getCachedRomanize(cacheKey);
+  if (cached) return cached;
+
+  const batches = [];
+  let curBatch = [];
+  let curChars = 0;
+  for (const slot of slots) {
+    const add = slot.text.length + (curBatch.length > 0 ? 8 : 0);
+    if (curBatch.length > 0 && curChars + add > MAX_ROMANIZE_BATCH_CHARS) {
+      batches.push(curBatch);
+      curBatch = [];
+      curChars = 0;
+    }
+    curBatch.push(slot);
+    curChars += add;
+  }
+  if (curBatch.length > 0) batches.push(curBatch);
+
+  const answers = [];
+  for (let i = 0; i < batches.length; i += 2) {
+    const chunk = batches.slice(i, i + 2);
+    // eslint-disable-next-line no-await-in-loop
+    const results = await Promise.all(chunk.map((b) => requestRomanizeBatch(b).catch(() => null)));
+    answers.push(...results);
+  }
+
+  if (answers.some((a) => !a)) {
+    return { status: 'unavailable', subLines: [] };
+  }
+
+  const romanizedTexts = answers.flatMap((a) => a.translations);
+  const sourceLanguage = answers.find((a) => a?.sourceLanguage)?.sourceLanguage || '';
+  if (romanizedTexts.length !== slots.length) {
+    return { status: 'unavailable', subLines: [] };
+  }
+
+  const byIndex = new Map();
+  slots.forEach((slot, idx) => {
+    const rom = romanizedTexts[idx];
+    byIndex.set(slot.lineIndex, slot.isHeader ? `[${rom}]` : rom);
+  });
+
+  let anyChanged = false;
+  const subLines = lines.map((orig, idx) => {
+    const sub = byIndex.get(idx);
+    if (!sub) return null;
+    if (normalizeComparableLyric(sub) === normalizeComparableLyric(orig)) return null;
+    anyChanged = true;
+    return sub;
+  });
+
+  if (!anyChanged) {
+    return { status: 'unavailable', subLines: [] };
+  }
+
+  const out = { status: 'ok', sourceLanguage, subLines };
+  putCachedRomanize(cacheKey, out);
+  return out;
+}
+
 module.exports = {
   fetchArtistPage,
   fetchAlbumTracks,
   fetchWordSyncedLyrics,
   fetchBestPartSignals,
   fetchSponsorBlockSegments,
+  romanizeLyricLines,
 };

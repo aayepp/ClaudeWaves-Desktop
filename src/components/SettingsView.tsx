@@ -984,6 +984,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         ))}
                       </div>
                     </div>
+
+                    <div className="cw-setting-row" style={{ padding: '2px 0' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>Auto-Romanize Lyrics</div>
+                        <div className="cw-muted" style={{ fontSize: 11.5 }}>
+                          Show phonetic pronunciation under non-Latin lyrics (JP, KR, ZH, RU, AR)
+                        </div>
+                      </div>
+                      <GlassSwitch
+                        checked={settings.lyricsAutoRomanize}
+                        tint={accentHex}
+                        intensity={settings.glassIntensity}
+                        onChange={(checked) => onUpdate({ lyricsAutoRomanize: checked })}
+                      />
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

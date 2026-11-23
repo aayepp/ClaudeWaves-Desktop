@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.6';
+export const APP_VERSION = '1.4.7';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,16 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.7',
+    date: '2026-11-23',
+    summary: 'Auto-Romanize Non-Latin Lyrics: automatically displays sing-along phonetic romanization beneath Japanese, Korean, Chinese, Cyrillic, Arabic & other non-Latin lyrics.',
+    added: [
+      'Automatic background lyric romanizer endpoint (/api/lyrics/romanize) with batching, [Section] preservation, unchanged-English deduplication, and 40-track LRU cache.',
+      'Phonetic romanization sub-lines rendered seamlessly inside Side Panel, Fullscreen Karaoke (Sentence & Word Sweep), Plain Lyrics, Ambient Visualizer, and Floating Desktop Overlay.',
+      'Quick Aa Romaji toggle pill right on the lyrics toolbar plus Auto-Romanize Lyrics switch in Settings -> Audio & Lyrics.',
+    ],
+  },
   {
     version: '1.4.6',
     date: '2026-11-23',

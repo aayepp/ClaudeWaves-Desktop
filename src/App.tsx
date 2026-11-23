@@ -1110,6 +1110,9 @@ export const App: React.FC = () => {
     (lyricsDisplayMode: AppSettings['lyricsDisplayMode']) => updateSettings({ lyricsDisplayMode }),
     [updateSettings],
   );
+  const handleToggleAutoRomanize = useCallback(() => {
+    updateSettings({ lyricsAutoRomanize: !settings.lyricsAutoRomanize });
+  }, [settings.lyricsAutoRomanize, updateSettings]);
   const handleLyricsOffsetChange = useCallback(
     (ms: number) => {
       const vid = playerStateRef.current.currentTrack?.videoId;
@@ -1132,6 +1135,7 @@ export const App: React.FC = () => {
       playerStateRef.current.lyrics,
       getPlaybackPositionMs(),
       offset,
+      settings.lyricsAutoRomanize,
     );
     const res = await controlFloatingLyrics({
       action: 'toggle',
@@ -1145,7 +1149,7 @@ export const App: React.FC = () => {
       },
     });
     setFloatingLyricsOpen(res.open);
-  }, [library.lyricsOffsets, activeAccent]);
+  }, [library.lyricsOffsets, activeAccent, settings.lyricsAutoRomanize]);
 
   const ambientEnteredFullscreenRef = useRef(false);
 
@@ -3066,6 +3070,7 @@ export const App: React.FC = () => {
             lyricsFontSize={settings.lyricsFontSize}
             lyricsBounce={settings.lyricsBounce}
             lyricsDisplayMode={settings.lyricsDisplayMode}
+            lyricsAutoRomanize={settings.lyricsAutoRomanize}
             lyricsOffsetMs={
               player.state.currentTrack
                 ? (library.lyricsOffsets[player.state.currentTrack.videoId] ?? 0)
@@ -3076,6 +3081,7 @@ export const App: React.FC = () => {
             onExpandFull={handleOpenFullSheet}
             onOpenArtist={openArtist}
             onLyricsDisplayModeChange={handleLyricsModeChange}
+            onToggleLyricsAutoRomanize={handleToggleAutoRomanize}
             onLyricsOffsetChange={handleLyricsOffsetChange}
             onSeekTo={player.seekTo}
             onPlayQueueIndex={handlePlayQueueIndex}
@@ -3132,6 +3138,7 @@ export const App: React.FC = () => {
         lyricsFontSize={settings.lyricsFontSize}
         lyricsBounce={settings.lyricsBounce}
         lyricsDisplayMode={settings.lyricsDisplayMode}
+        lyricsAutoRomanize={settings.lyricsAutoRomanize}
         lyricsOffsetMs={
           player.state.currentTrack
             ? (library.lyricsOffsets[player.state.currentTrack.videoId] ?? 0)
@@ -3144,6 +3151,7 @@ export const App: React.FC = () => {
         onTabChange={setRightPanelTab}
         onVolumeChange={(v) => updateSettings({ volume: Math.round(v) })}
         onLyricsDisplayModeChange={(lyricsDisplayMode) => updateSettings({ lyricsDisplayMode })}
+        onToggleLyricsAutoRomanize={handleToggleAutoRomanize}
         onLyricsOffsetChange={(ms) => {
           if (player.state.currentTrack) {
             setTrackLyricsOffset(player.state.currentTrack.videoId, ms);
@@ -3250,6 +3258,7 @@ export const App: React.FC = () => {
               ? (library.lyricsOffsets[player.state.currentTrack.videoId] ?? 0)
               : 0
           }
+          autoRomanize={settings.lyricsAutoRomanize}
           isPlaying={player.state.isPlaying}
           accentHex={activeAccent}
         />
@@ -3283,6 +3292,7 @@ export const App: React.FC = () => {
             ? (library.lyricsOffsets[player.state.currentTrack.videoId] ?? 0)
             : 0
         }
+        autoRomanize={settings.lyricsAutoRomanize}
         onTogglePlayPause={player.togglePlayPause}
         onNext={player.next}
         onPrev={player.previous}

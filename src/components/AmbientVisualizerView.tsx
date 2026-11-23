@@ -29,6 +29,7 @@ interface AmbientVisualizerViewProps {
   isDark: boolean;
   isLiked: boolean;
   lyricsOffsetMs: number;
+  autoRomanize?: boolean;
   onTogglePlayPause: () => void;
   onNext: () => void;
   onPrev: () => void;
@@ -51,8 +52,9 @@ const AmbientLyricStack: React.FC<{
   lyrics: LyricsResult;
   lyricsOffsetMs: number;
   mode: LyricViewMode;
+  autoRomanize?: boolean;
   onSeekTo: (ms: number) => void;
-}> = React.memo(({ track, lyrics, lyricsOffsetMs, mode, onSeekTo }) => {
+}> = React.memo(({ track, lyrics, lyricsOffsetMs, mode, autoRomanize = true, onSeekTo }) => {
   const positionMs = usePlaybackPositionMs();
 
   if (!track) {
@@ -180,7 +182,10 @@ const AmbientLyricStack: React.FC<{
             data-dist={dist}
             onClick={() => onSeekTo(item.timeMs)}
           >
-            {item.text || '• • •'}
+            <span>{item.text || '• • •'}</span>
+            {isCurrent && autoRomanize && item.romanized && (
+              <span className="cw-amb-lyric-rom">{item.romanized}</span>
+            )}
           </button>
         );
       })}
@@ -328,6 +333,7 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
   waveColorHex,
   isLiked,
   lyricsOffsetMs,
+  autoRomanize = true,
   onTogglePlayPause,
   onNext,
   onPrev,
@@ -834,6 +840,7 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
                 lyrics={player.lyrics}
                 lyricsOffsetMs={lyricsOffsetMs}
                 mode="five"
+                autoRomanize={autoRomanize}
                 onSeekTo={onSeekTo}
               />
             </div>
@@ -903,6 +910,7 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
                 lyrics={player.lyrics}
                 lyricsOffsetMs={lyricsOffsetMs}
                 mode="three"
+                autoRomanize={autoRomanize}
                 onSeekTo={onSeekTo}
               />
             </div>
@@ -933,6 +941,7 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
                 lyrics={player.lyrics}
                 lyricsOffsetMs={lyricsOffsetMs}
                 mode="two"
+                autoRomanize={autoRomanize}
                 onSeekTo={onSeekTo}
               />
             </div>
@@ -959,6 +968,7 @@ export const AmbientVisualizerView: React.FC<AmbientVisualizerViewProps> = ({
                 lyrics={player.lyrics}
                 lyricsOffsetMs={lyricsOffsetMs}
                 mode="single"
+                autoRomanize={autoRomanize}
                 onSeekTo={onSeekTo}
               />
             </div>

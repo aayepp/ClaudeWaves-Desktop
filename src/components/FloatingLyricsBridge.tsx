@@ -7,6 +7,7 @@ interface FloatingLyricsBridgeProps {
   track: Track | null;
   lyrics: LyricsResult;
   lyricsOffsetMs: number;
+  autoRomanize?: boolean;
   isPlaying: boolean;
   accentHex: string;
 }
@@ -16,6 +17,7 @@ export function resolveActiveLyricPair(
   lyrics: LyricsResult,
   positionMs: number,
   lyricsOffsetMs: number,
+  autoRomanize = true,
 ): { line: string; nextLine: string } {
   if (!track) {
     return { line: 'ClaudeWaves Floating Lyrics', nextLine: 'Play any song to sync live lyrics' };
@@ -47,12 +49,13 @@ export function resolveActiveLyricPair(
   if (activeIdx < 0) {
     return {
       line: track.title,
-      nextLine: lines[0]?.text || track.artist,
+      nextLine: (autoRomanize && lines[0]?.romanized) || lines[0]?.text || track.artist,
     };
   }
+  const active = lines[activeIdx];
   return {
-    line: lines[activeIdx]?.text || '• • •',
-    nextLine: lines[activeIdx + 1]?.text || '',
+    line: active?.text || '• • •',
+    nextLine: (autoRomanize && active?.romanized) || lines[activeIdx + 1]?.text || '',
   };
 }
 
@@ -60,13 +63,14 @@ export const FloatingLyricsBridge: React.FC<FloatingLyricsBridgeProps> = React.m
   track,
   lyrics,
   lyricsOffsetMs,
+  autoRomanize = true,
   isPlaying,
   accentHex,
 }) => {
   const positionMs = usePlaybackPositionMs();
   const lastKeyRef = useRef('');
 
-  const { line, nextLine } = resolveActiveLyricPair(track, lyrics, positionMs, lyricsOffsetMs);
+  const { line, nextLine } = resolveActiveLyricPair(track, lyrics, positionMs, lyricsOffsetMs, autoRomanize);
   const title = track?.title ?? '';
   const artist = track?.artist ?? '';
   const key = `${track?.videoId ?? ''}|${line}|${nextLine}|${isPlaying}|${accentHex}`;

@@ -53,6 +53,7 @@ export interface LyricLine {
   timeMs: number;
   endMs?: number;
   text: string;
+  romanized?: string;
   words?: LyricWord[];
 }
 
@@ -61,7 +62,7 @@ export type LyricsResult =
   | { kind: 'loading' }
   | { kind: 'empty' }
   | { kind: 'instrumental' }
-  | { kind: 'plain'; text: string }
+  | { kind: 'plain'; text: string; romanizedLines?: Array<string | null> }
   | { kind: 'synced'; wordSynced?: boolean; source?: string; lines: LyricLine[] };
 
 export interface BestPartInfo {
@@ -159,6 +160,7 @@ export interface AppSettings {
   ambientPreset: AmbientPreset;
   ambientIdleMinutes: number; // 0 = Off, 1 | 3 | 5 | 10
   autoSyncPlaylists: boolean;
+  lyricsAutoRomanize: boolean;
 }
 
 export interface OfflineTrackEntry extends Track {
@@ -245,6 +247,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ambientPreset: 'aurora',
   ambientIdleMinutes: 3,
   autoSyncPlaylists: true,
+  lyricsAutoRomanize: true,
 };
 
 // 12 Curated Accent Colors (Neutral Clean default + 11 refined hues, no harsh neon green default)

@@ -19,6 +19,41 @@ export async function fetchSyncedLyrics(
   }
 }
 
+export function hasNonLatinScript(lines: string[]): boolean {
+  for (const line of lines) {
+    for (const ch of line) {
+      if (/\p{L}/u.test(ch) && !/\p{Script=Latin}/u.test(ch)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export async function romanizeLyricsApi(
+  trackId: string,
+  lines: string[],
+): Promise<Array<string | null> | null> {
+  try {
+    const res = await fetch('/api/lyrics/romanize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trackId, lines }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      status?: string;
+      subLines?: Array<string | null>;
+    };
+    if (data.status === 'ok' && Array.isArray(data.subLines)) {
+      return data.subLines;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Layer-3 Best Part fallback ported from ClaudeWaves Android BestPart.kt:
  * finds the first chorus by detecting substantive lyric lines repeated across
