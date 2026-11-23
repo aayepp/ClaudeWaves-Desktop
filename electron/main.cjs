@@ -83,6 +83,119 @@ function sendNativeAction(action) {
     .catch(() => {});
 }
 
+let thumbarIconsCache = null;
+
+function createThumbarIcon(kind) {
+  const size = 24;
+  const buf = Buffer.alloc(size * size * 4, 0);
+  const putPixel = (x, y, a = 255) => {
+    const ix = Math.round(x);
+    const iy = Math.round(y);
+    if (ix < 0 || iy < 0 || ix >= size || iy >= size) return;
+    const off = (iy * size + ix) * 4;
+    // White pixels (R=G=B=255) match both RGBA and BGRA byte layouts on Windows
+    buf[off] = 255;
+    buf[off + 1] = 255;
+    buf[off + 2] = 255;
+    buf[off + 3] = Math.max(buf[off + 3], a);
+  };
+  const fillRect = (x0, y0, w, h) => {
+    for (let y = y0; y < y0 + h; y++) {
+      for (let x = x0; x < x0 + w; x++) putPixel(x, y);
+    }
+  };
+  const fillTriRight = (xLeft, xRight, yMid, halfH) => {
+    const span = Math.max(1, xRight - xLeft);
+    for (let x = xLeft; x <= xRight; x++) {
+      const t = 1 - (x - xLeft) / span;
+      const curH = halfH * t;
+      for (let y = Math.floor(yMid - curH); y <= Math.ceil(yMid + curH); y++) {
+        putPixel(x, y);
+      }
+    }
+  };
+  const fillTriLeft = (xLeft, xRight, yMid, halfH) => {
+    const span = Math.max(1, xRight - xLeft);
+    for (let x = xLeft; x <= xRight; x++) {
+      const t = (x - xLeft) / span;
+      const curH = halfH * t;
+      for (let y = Math.floor(yMid - curH); y <= Math.ceil(yMid + curH); y++) {
+        putPixel(x, y);
+      }
+    }
+  };
+
+  if (kind === 'prev') {
+    fillRect(5, 6, 3, 12);
+    fillTriLeft(9, 19, 11.5, 6);
+  } else if (kind === 'next') {
+    fillTriRight(5, 15, 11.5, 6);
+    fillRect(16, 6, 3, 12);
+  } else if (kind === 'pause') {
+    fillRect(7, 6, 3, 12);
+    fillRect(14, 6, 3, 12);
+  } else {
+    fillTriRight(7, 18, 11.5, 6.5);
+  }
+  return nativeImage.createFromBitmap(buf, { width: size, height: size });
+}
+
+function getThumbarIcons() {
+  if (!thumbarIconsCache) {
+    thumbarIconsCache = {
+      prev: createThumbarIcon('prev'),
+      play: createThumbarIcon('play'),
+      pause: createThumbarIcon('pause'),
+      next: createThumbarIcon('next'),
+    };
+  }
+  return thumbarIconsCache;
+}
+
+function updateWindowsThumbar({ isPlaying = false, hasTrack = false, title = '', artist = '' } = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    const cleanTitle = String(title || '').trim();
+    const cleanArtist = String(artist || '').trim();
+    if (hasTrack && cleanTitle) {
+      mainWindow.setTitle(
+        cleanArtist ? `${cleanTitle} — ${cleanArtist} · ClaudeWaves Desktop` : `${cleanTitle} · ClaudeWaves Desktop`,
+      );
+    } else {
+      mainWindow.setTitle('ClaudeWaves Desktop');
+    }
+  } catch {
+    // ignore
+  }
+  if (process.platform !== 'win32') return;
+  try {
+    const icons = getThumbarIcons();
+    const flags = hasTrack ? ['enabled'] : ['disabled'];
+    mainWindow.setThumbarButtons([
+      {
+        tooltip: 'Previous Track',
+        icon: icons.prev,
+        flags,
+        click: () => sendNativeAction('prev'),
+      },
+      {
+        tooltip: isPlaying ? 'Pause' : 'Play',
+        icon: isPlaying ? icons.pause : icons.play,
+        flags,
+        click: () => sendNativeAction('play-pause'),
+      },
+      {
+        tooltip: 'Next Track',
+        icon: icons.next,
+        flags,
+        click: () => sendNativeAction('next'),
+      },
+    ]);
+  } catch {
+    // ignore thumbar errors
+  }
+}
+
 function syncGlobalShortcuts() {
   try {
     globalShortcut.unregisterAll();
@@ -612,6 +725,16 @@ function startLocalServer(distDir, userDataDir) {
           return;
         }
 
+        if ((req.url || '') === '/api/desktop/playback-state' && req.method === 'POST') {
+          const raw = await readJsonBody(req);
+          const body = raw ? JSON.parse(raw) : {};
+          updateWindowsThumbar(body || {});
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end('{"ok":true}');
+          return;
+        }
+
         if ((req.url || '') === '/api/desktop/lyrics-overlay' && req.method === 'POST') {
           const raw = await readJsonBody(req);
           const body = raw ? JSON.parse(raw) : {};
@@ -867,6 +990,7 @@ async function createWindow() {
   });
 
   await mainWindow.loadURL(`http://127.0.0.1:${port}/`);
+  updateWindowsThumbar({ isPlaying: false, hasTrack: false, title: '', artist: '' });
 
   mainWindow.on('close', (e) => {
     if (desktopConfig.closeToTray && !isQuitting) {

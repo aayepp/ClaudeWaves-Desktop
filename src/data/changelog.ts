@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.4';
+export const APP_VERSION = '1.4.5';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,15 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.5',
+    date: '2026-11-23',
+    summary: 'Background Auto-Sync Playlists & Windows Taskbar Media Controls: automatically refreshes Liked Songs and synced playlists on startup (+30m) and adds native Windows taskbar transport buttons.',
+    added: [
+      'Silent background Auto-Sync for Liked Songs and YouTube Music / Spotify playlists on launch (3s delay, rate-limit spaced, skips Offline Mode) plus periodic 30-minute refresh and Settings toggle / Sync button.',
+      'Native Windows Taskbar Thumbar Media Buttons (Previous, Play/Pause, Next) shown on taskbar hover along with live track/artist window title.',
+    ],
+  },
   {
     version: '1.4.4',
     date: '2026-11-23',

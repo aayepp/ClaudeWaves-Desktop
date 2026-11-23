@@ -47,6 +47,7 @@ import {
   fetchArtistPage,
   setDesktopFullscreen,
   setMiniWindowMode,
+  syncDesktopPlaybackState,
   updateDesktopConfig,
 } from './api/extras';
 import { fetchExploreFeed, fetchHomeFeed, searchYouTubeMusic } from './api/youtube';
@@ -213,6 +214,8 @@ export const App: React.FC = () => {
   } = useLibrary();
 
   const { settings } = library;
+  const libraryRef = useRef(library);
+  libraryRef.current = library;
   const intensity = settings.glassIntensity;
 
   const [route, setRoute] = useState<SidebarRoute>({ kind: 'home' });
@@ -872,6 +875,154 @@ export const App: React.FC = () => {
     [player.state.queue],
   );
   const [refreshingPlaylistKey, setRefreshingPlaylistKey] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const autoSyncRunningRef = useRef(false);
+  const didStartupSyncRef = useRef(false);
+
+  const runBackgroundPlaylistSync = useCallback(
+    async (manual = false) => {
+      if (autoSyncRunningRef.current) return;
+      if (!manual && (!settings.autoSyncPlaylists || settings.offlineMode)) return;
+      if (settings.offlineMode && manual) {
+        showToast('Tutup Offline Mode dulu untuk sync playlist.');
+        return;
+      }
+      if (!auth.yt.connected && !auth.spotify.connected) {
+        if (manual) showToast('Connect YouTube Music or Spotify in Settings to sync playlists.');
+        return;
+      }
+
+      autoSyncRunningRef.current = true;
+      setSyncingAll(true);
+      try {
+        let totalAdded = 0;
+        let syncedPlaylists = 0;
+
+        if (auth.yt.connected) {
+          try {
+            const res = await importPlaylistByUrl('VLLM');
+            const { added } = mergeLikedTracks(res.tracks);
+            totalAdded += added;
+          } catch {
+            // Keep going with remaining playlists
+          }
+        }
+
+        const playlists = libraryRef.current.playlists;
+        const needsLookup = playlists.some(
+          (pl) => !pl.sourceId && !/liked\s*(music|songs)/i.test(pl.name),
+        );
+        let ytCatalog: Array<{ id: string; title: string; url?: string }> = [];
+        let spCatalog: Array<{ id: string; title: string; url?: string }> = [];
+        if (needsLookup && auth.yt.connected) {
+          try {
+            ytCatalog = await fetchMyYtPlaylists();
+          } catch {
+            // ignore
+          }
+        }
+        if (needsLookup && auth.spotify.connected) {
+          try {
+            spCatalog = await fetchMySpotifyPlaylists();
+          } catch {
+            // ignore
+          }
+        }
+
+        for (const pl of playlists) {
+          let targetSource = pl.source;
+          let targetId = pl.sourceId;
+
+          if (!targetId) {
+            if (/liked\s*(music|songs)/i.test(pl.name) && auth.yt.connected) {
+              targetSource = 'youtube';
+              targetId = 'VLLM';
+            } else {
+              const needle = pl.name.trim().toLowerCase();
+              const ytHit = ytCatalog.find((p) => p.title.trim().toLowerCase() === needle);
+              if (ytHit) {
+                targetSource = 'youtube';
+                targetId = ytHit.url || ytHit.id;
+              } else {
+                const spHit = spCatalog.find((p) => p.title.trim().toLowerCase() === needle);
+                if (spHit) {
+                  targetSource = 'spotify';
+                  targetId = spHit.url || spHit.id;
+                }
+              }
+            }
+          }
+
+          if (!targetId) continue;
+          if (targetSource === 'youtube' && !auth.yt.connected) continue;
+          if (targetSource === 'spotify' && !auth.spotify.connected) continue;
+
+          try {
+            await new Promise((r) => window.setTimeout(r, 450));
+            const res = await importPlaylistByUrl(targetId);
+            const { added } = syncPlaylistTracks(pl.id, res.tracks, {
+              source: res.source ?? targetSource,
+              sourceId: targetId,
+            });
+            totalAdded += added;
+            syncedPlaylists += 1;
+          } catch {
+            // Skip single failing playlist
+          }
+        }
+
+        if (totalAdded > 0) {
+          showToast(`Auto-sync: +${totalAdded} lagu baru dikemaskini!`);
+        } else if (manual) {
+          showToast(`Semua playlist sudah terkini (${syncedPlaylists} playlist + Liked disemak)`);
+        }
+      } finally {
+        autoSyncRunningRef.current = false;
+        setSyncingAll(false);
+      }
+    },
+    [
+      settings.autoSyncPlaylists,
+      settings.offlineMode,
+      auth.yt.connected,
+      auth.spotify.connected,
+      mergeLikedTracks,
+      syncPlaylistTracks,
+      showToast,
+    ],
+  );
+
+  // Silent playlist & Liked Songs auto-sync on app launch (3s delay) + every 30 minutes
+  useEffect(() => {
+    if (
+      !settings.autoSyncPlaylists ||
+      settings.offlineMode ||
+      (!auth.yt.connected && !auth.spotify.connected)
+    ) {
+      return;
+    }
+    let startupTimer: number | null = null;
+    if (!didStartupSyncRef.current) {
+      startupTimer = window.setTimeout(() => {
+        didStartupSyncRef.current = true;
+        runBackgroundPlaylistSync(false);
+      }, 3000);
+    }
+    const intervalId = window.setInterval(() => {
+      runBackgroundPlaylistSync(false);
+    }, 30 * 60_000);
+
+    return () => {
+      if (startupTimer !== null) window.clearTimeout(startupTimer);
+      window.clearInterval(intervalId);
+    };
+  }, [
+    settings.autoSyncPlaylists,
+    settings.offlineMode,
+    auth.yt.connected,
+    auth.spotify.connected,
+    runBackgroundPlaylistSync,
+  ]);
 
   const handleRefreshLiked = useCallback(async () => {
     if (refreshingPlaylistKey !== null) return;
@@ -1195,6 +1346,22 @@ export const App: React.FC = () => {
       globalMediaKeys: settings.globalMediaKeys,
     });
   }, [settings.closeToTray, settings.globalMediaKeys]);
+
+  // Sync Windows Taskbar Thumbar media buttons & window title with playback state
+  useEffect(() => {
+    const cur = player.state.currentTrack;
+    syncDesktopPlaybackState({
+      isPlaying: player.state.isPlaying,
+      hasTrack: Boolean(cur),
+      title: cur?.title ?? '',
+      artist: cur?.artist ?? '',
+    });
+  }, [
+    player.state.isPlaying,
+    player.state.currentTrack?.videoId,
+    player.state.currentTrack?.title,
+    player.state.currentTrack?.artist,
+  ]);
 
   useEffect(() => {
     const onNativeAction = (e: Event) => {
@@ -2880,6 +3047,8 @@ export const App: React.FC = () => {
                   updateInfo={updateInfo}
                   onUpdateInfoChanged={setUpdateInfo}
                   onOpenStats={() => setRoute({ kind: 'stats' })}
+                  syncingAll={syncingAll}
+                  onSyncAllPlaylists={() => runBackgroundPlaylistSync(true)}
                 />
               )}
             </div>

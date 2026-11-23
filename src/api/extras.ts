@@ -87,6 +87,23 @@ export async function setDesktopFullscreen(enabled: boolean): Promise<boolean> {
   }
 }
 
+export async function syncDesktopPlaybackState(payload: {
+  isPlaying: boolean;
+  hasTrack: boolean;
+  title: string;
+  artist: string;
+}): Promise<void> {
+  try {
+    await fetch('/api/desktop/playback-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Ignore outside Electron runtime
+  }
+}
+
 export interface FloatingLyricsPayload {
   action: 'open' | 'close' | 'toggle' | 'lock' | 'unlock' | 'update';
   state?: {

@@ -66,6 +66,10 @@ function mergeLibrary(parsed: Partial<LibraryData>, fallback: LibraryData): Libr
       layoutSkin: migratedSkin,
       ambientPreset: migratedAmbient,
       ambientIdleMinutes: migratedIdleMinutes,
+      autoSyncPlaylists:
+        typeof rawSettings.autoSyncPlaylists === 'boolean'
+          ? rawSettings.autoSyncPlaylists
+          : fallback.settings.autoSyncPlaylists,
       closeToTray:
         typeof rawSettings.closeToTray === 'boolean'
           ? rawSettings.closeToTray

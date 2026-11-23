@@ -102,6 +102,8 @@ interface SettingsViewProps {
   updateInfo?: UpdateCheckResult | null;
   onUpdateInfoChanged?: (info: UpdateCheckResult) => void;
   onOpenStats?: () => void;
+  syncingAll?: boolean;
+  onSyncAllPlaylists?: () => void;
 }
 
 const SETTINGS_TABS: SettingsTab[] = ['accounts', 'appearance', 'audio', 'about'];
@@ -165,6 +167,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   updateInfo = null,
   onUpdateInfoChanged,
   onOpenStats,
+  syncingAll = false,
+  onSyncAllPlaylists,
 }) => {
   const [authBusy, setAuthBusy] = useState<'yt' | 'sp' | null>(null);
   const [authErr, setAuthErr] = useState<string | null>(null);
@@ -457,6 +461,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       Spotify
                     </GlassButton>
                   )}
+                </div>
+
+                <div className="cw-setting-row">
+                  <div className="cw-row-meta">
+                    <div style={{ fontWeight: 650, fontSize: 13.5 }}>Auto-Sync Playlists (Launch &amp; 30m)</div>
+                    <div className="cw-muted" style={{ fontSize: 12 }}>
+                      Silently pulls new Liked Songs &amp; playlist updates on startup
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {onSyncAllPlaylists && (
+                      <GlassButton
+                        size="sm"
+                        variant="glass"
+                        intensity={settings.glassIntensity}
+                        disabled={syncingAll}
+                        icon={<RefreshCw size={12} className={syncingAll ? 'cw-spin' : undefined} />}
+                        onClick={onSyncAllPlaylists}
+                      >
+                        {syncingAll ? 'Syncing' : 'Sync'}
+                      </GlassButton>
+                    )}
+                    <GlassSwitch
+                      checked={settings.autoSyncPlaylists}
+                      tint={accentHex}
+                      intensity={settings.glassIntensity}
+                      onChange={(checked) => onUpdate({ autoSyncPlaylists: checked })}
+                    />
+                  </div>
                 </div>
                 {authErr && <div style={{ color: '#ff5c5c', fontSize: 12 }}>{authErr}</div>}
               </div>
