@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.10';
+export const APP_VERSION = '1.4.11';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,18 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.11',
+    date: '2026-11-23',
+    summary: 'Always-on-Top Mini Player Fix & Auto-Clean Build Artifacts: resolved black screen crash when toggling Mini Player and automatically clean previous installers after builds.',
+    fixed: [
+      'Moved smartPlaylists useMemo hook above the early miniMode return in App.tsx so entering Always-on-Top Mini Player never triggers a React hook-order crash (black unresponsive window).',
+      'Auto-closes open popovers and modals cleanly when entering Always-on-Top Mini Player mode.',
+    ],
+    changed: [
+      'Added scripts/clean-old-releases.cjs to automatically remove older installers, blockmaps, and win-unpacked staging output after Windows builds to save disk space.',
+    ],
+  },
   {
     version: '1.4.10',
     date: '2026-11-23',

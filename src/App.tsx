@@ -761,8 +761,15 @@ export const App: React.FC = () => {
   }, [player, showToast]);
 
   const toggleMiniMode = useCallback(async (enable: boolean) => {
+    if (enable) {
+      setFullSheetOpen(false);
+      setEqPopupOpen(false);
+      setOutputPopoverOpen(false);
+      setCommandPaletteOpen(false);
+      setQuoteModalOpen(false);
+      setAmbientModeOpen(false);
+    }
     setMiniMode(enable);
-    if (enable) setFullSheetOpen(false);
     await setMiniWindowMode(enable);
   }, []);
 
@@ -1556,6 +1563,11 @@ export const App: React.FC = () => {
     return 'Good evening';
   }, []);
 
+  const smartPlaylists = useMemo(
+    () => buildSmartPlaylists(library.stats, library.likedTracks, library.recentlyPlayed),
+    [library.stats, library.likedTracks, library.recentlyPlayed],
+  );
+
   if (miniMode) {
     return (
       <>
@@ -1971,11 +1983,6 @@ export const App: React.FC = () => {
       );
     });
   };
-
-  const smartPlaylists = useMemo(
-    () => buildSmartPlaylists(library.stats, library.likedTracks, library.recentlyPlayed),
-    [library.stats, library.likedTracks, library.recentlyPlayed],
-  );
 
   const activePlaylist =
     route.kind === 'playlist'

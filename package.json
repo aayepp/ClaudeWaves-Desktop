@@ -1,7 +1,7 @@
 {
   "name": "claudewaves-desktop",
   "private": true,
-  "version": "1.4.10",
+  "version": "1.4.11",
   "description": "ClaudeWaves Desktop — Apple-style Liquid Glass YouTube Music Client",
   "author": "aayepp",
   "main": "electron/main.cjs",
@@ -11,7 +11,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "electron:start": "npm run build && electron .",
-    "build:win": "npm run build && electron-builder --win portable nsis",
+    "build:win": "npm run build && electron-builder --win portable nsis && node scripts/clean-old-releases.cjs",
     "tauri": "tauri"
   },
   "dependencies": {
