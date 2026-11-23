@@ -928,6 +928,7 @@ html[data-preset='comic'] .cw-sidebar-widget {
 }
 
 .cw-side-lyrics {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -2493,16 +2494,49 @@ html[data-preset='comic'] .cw-fullplayer-art {
   overflow: hidden;
 }
 
+.cw-fullplayer-right .cw-lyrics-toolbar {
+  padding: 2px 24px 10px 26px;
+}
+
 .cw-fullplayer-lyrics {
+  position: relative;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 28vh 24px 32vh 16px;
+  padding: 0 24px 0 16px;
   scrollbar-width: none;
   will-change: scroll-position;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.25) 5%,
+    #000 15%,
+    #000 85%,
+    rgba(0, 0, 0, 0.25) 95%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.25) 5%,
+    #000 15%,
+    #000 85%,
+    rgba(0, 0, 0, 0.25) 95%,
+    transparent 100%
+  );
+}
+
+.cw-fullplayer-lyrics::before,
+.cw-fullplayer-lyrics::after {
+  content: '';
+  display: block;
+  flex: 0 0 46%;
+  min-height: 46%;
+  pointer-events: none;
 }
 
 .cw-fullplayer-lyrics::-webkit-scrollbar {
@@ -2579,6 +2613,13 @@ html[data-preset='comic'] .cw-fullplayer-art {
   }
   .cw-fullplayer-lyrics {
     padding: 20px 8px 40px;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .cw-fullplayer-lyrics::before,
+  .cw-fullplayer-lyrics::after {
+    flex: 0 0 0;
+    min-height: 0;
   }
 }
 

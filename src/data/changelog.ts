@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.12';
+export const APP_VERSION = '1.4.13';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,18 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.13',
+    date: '2026-11-23',
+    summary: 'Full-Screen Lyrics Symmetrical Vertical Centering & Soft Top/Bottom Edge Fade.',
+    fixed: [
+      'Replaced asymmetrical vh padding on full-screen synced lyrics with symmetrical 46% flex spacers so the first through final lyric lines lock directly at vertical center.',
+      'Switched auto-scroll positioning from raw offsetTop to scale-aware getBoundingClientRect() centering with instant initial snap on open and ResizeObserver re-centering across layout/window changes.',
+    ],
+    changed: [
+      'Added smooth top/bottom gradient fade mask on full-screen lyrics and aligned the full-screen lyrics toolbar padding across every theme.',
+    ],
+  },
   {
     version: '1.4.12',
     date: '2026-11-23',

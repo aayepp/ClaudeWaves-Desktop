@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Languages, RotateCcw, Share2, Timer } from 'lucide-react';
 import { usePlaybackPositionMs } from '../hooks/playbackClock';
 import type {
@@ -123,9 +123,25 @@ const LyricLineRow = React.memo<LyricLineRowProps>(
 );
 
 /**
+ * Scale-aware vertical center target inside the scrollable lyrics container.
+ * Uses getBoundingClientRect divided by current transform scale so entrance
+ * animations (e.g. .cw-fullplayer scale(0.16)) never skew scroll positioning.
+ */
+function computeTargetTop(container: HTMLDivElement, el: HTMLDivElement): number | null {
+  const cRect = container.getBoundingClientRect();
+  const eRect = el.getBoundingClientRect();
+  if (cRect.height <= 0 || container.clientHeight <= 0) return null;
+  const scaleY = cRect.height / container.clientHeight;
+  const elCenterInContent =
+    (eRect.top - cRect.top) / scaleY + container.scrollTop + (eRect.height / scaleY) / 2;
+  const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+  return Math.max(0, Math.min(maxScroll, elCenterInContent - container.clientHeight / 2));
+}
+
+/**
  * 240Hz Synced Lyrics Viewer:
  * - Toggle between clean Sentence-by-Sentence mode and Apple/Android smooth Karaoke Word Sweep
- * - Memoized row rendering + GPU rAF scroll via offsetTop
+ * - Memoized row rendering + scale-safe GPU rAF scroll centering
  * - Per-track Lyrics Sync Offset adjuster (-10s..+10s)
  */
 export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
@@ -149,6 +165,7 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
   const activeLineRef = useRef<HTMLDivElement | null>(null);
   const scrollAnimRef = useRef<number>(0);
   const manualPauseUntilRef = useRef<number>(0);
+  const hasSnappedRef = useRef<boolean>(false);
   const [offsetOpen, setOffsetOpen] = useState(false);
 
   const effectiveMs = Math.max(0, positionMs + offsetMs);
@@ -163,18 +180,24 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
     return idx;
   }, [lyrics, effectiveMs]);
 
-  useEffect(() => {
-    if (performance.now() < manualPauseUntilRef.current) return;
+  const scrollToActiveLine = useCallback((immediate: boolean) => {
     const container = scrollRef.current;
     const el = activeLineRef.current;
     if (!container || !el) return;
 
-    const targetTop = Math.max(
-      0,
-      el.offsetTop - container.offsetTop - container.clientHeight / 2 + el.offsetHeight / 2,
-    );
+    const targetTop = computeTargetTop(container, el);
+    if (targetTop === null) return;
 
-    if (scrollAnimRef.current) cancelAnimationFrame(scrollAnimRef.current);
+    if (scrollAnimRef.current) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = 0;
+    }
+
+    if (immediate) {
+      container.scrollTop = targetTop;
+      return;
+    }
+
     let current = container.scrollTop;
     let last = performance.now();
 
@@ -193,10 +216,38 @@ export const WordSyncedLyrics: React.FC<WordSyncedLyricsProps> = ({
     };
 
     scrollAnimRef.current = requestAnimationFrame(step);
+  }, []);
+
+  useEffect(() => {
+    hasSnappedRef.current = false;
+  }, [lyrics]);
+
+  useEffect(() => {
+    if (performance.now() < manualPauseUntilRef.current) return;
+    if (!scrollRef.current || !activeLineRef.current) return;
+
+    const immediate = !hasSnappedRef.current;
+    hasSnappedRef.current = true;
+    scrollToActiveLine(immediate);
+
     return () => {
-      if (scrollAnimRef.current) cancelAnimationFrame(scrollAnimRef.current);
+      if (scrollAnimRef.current) {
+        cancelAnimationFrame(scrollAnimRef.current);
+        scrollAnimRef.current = 0;
+      }
     };
-  }, [activeLineIndex]);
+  }, [activeLineIndex, lyrics, fontSize, autoRomanize, translateLang, large, scrollToActiveLine]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (performance.now() < manualPauseUntilRef.current) return;
+      scrollToActiveLine(false);
+    });
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [lyrics.kind, scrollToActiveLine]);
 
   const cancelAutoScroll = () => {
     manualPauseUntilRef.current = performance.now() + 2600;
