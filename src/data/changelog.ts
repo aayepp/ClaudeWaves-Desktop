@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.3';
+export const APP_VERSION = '1.4.4';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,15 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.4',
+    date: '2026-11-23',
+    summary: 'Auto-Ambient Screensaver: automatically enters in-window Ambient Visualizer after 3 minutes of inactivity while music is playing.',
+    added: [
+      'In-app idle screensaver timer (default 3 minutes while playing with visible window) that switches seamlessly into Ambient Visualizer without taking over OS fullscreen.',
+      'Configurable Ambient Screensaver idle timeout (Off / 1m / 3m / 5m / 10m) in Settings -> Audio & Lyrics -> Desktop Native & Visualizer Modes.',
+    ],
+  },
   {
     version: '1.4.3',
     date: '2026-11-22',

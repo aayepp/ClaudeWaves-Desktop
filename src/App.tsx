@@ -996,15 +996,29 @@ export const App: React.FC = () => {
     setFloatingLyricsOpen(res.open);
   }, [library.lyricsOffsets, activeAccent]);
 
+  const ambientEnteredFullscreenRef = useRef(false);
+
   const handleOpenAmbientMode = useCallback(() => {
     setFullSheetOpen(false);
+    setEqPopupOpen(false);
     setAmbientModeOpen(true);
+    ambientEnteredFullscreenRef.current = true;
     setDesktopFullscreen(true);
+  }, []);
+
+  const handleOpenAmbientScreensaver = useCallback(() => {
+    setFullSheetOpen(false);
+    setEqPopupOpen(false);
+    setAmbientModeOpen(true);
+    ambientEnteredFullscreenRef.current = false;
   }, []);
 
   const handleCloseAmbientMode = useCallback(() => {
     setAmbientModeOpen(false);
-    setDesktopFullscreen(false);
+    if (ambientEnteredFullscreenRef.current) {
+      ambientEnteredFullscreenRef.current = false;
+      setDesktopFullscreen(false);
+    }
   }, []);
 
   const handleToggleAmbientMode = useCallback(() => {
@@ -1014,6 +1028,98 @@ export const App: React.FC = () => {
       handleOpenAmbientMode();
     }
   }, [handleCloseAmbientMode, handleOpenAmbientMode]);
+
+  // Auto-Ambient Screensaver when playing and user is idle inside app window
+  useEffect(() => {
+    const idleMin = settings.ambientIdleMinutes ?? 3;
+    const eligible =
+      idleMin > 0 &&
+      player.state.isPlaying &&
+      Boolean(player.state.currentTrack) &&
+      !ambientModeOpen &&
+      !miniMode &&
+      !videoMode &&
+      !onboardingOpen &&
+      !splashVisible &&
+      !importModalOpen &&
+      !playlistModalOpen &&
+      !profileModalOpen;
+    if (!eligible) return;
+
+    const timeoutMs = idleMin * 60_000;
+    let timerId: number | null = null;
+    let lastMoveResetAt = 0;
+
+    const clearTimer = () => {
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+        timerId = null;
+      }
+    };
+
+    const scheduleTimer = () => {
+      clearTimer();
+      if (document.hidden) return;
+      timerId = window.setTimeout(() => {
+        if (
+          !document.hidden &&
+          playerStateRef.current.isPlaying &&
+          Boolean(playerStateRef.current.currentTrack) &&
+          !ambientModeRef.current
+        ) {
+          handleOpenAmbientScreensaver();
+        }
+      }, timeoutMs);
+    };
+
+    const onPointerMove = () => {
+      const now = Date.now();
+      if (now - lastMoveResetAt < 500) return;
+      lastMoveResetAt = now;
+      scheduleTimer();
+    };
+
+    const onUserActivity = () => {
+      lastMoveResetAt = Date.now();
+      scheduleTimer();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) clearTimer();
+      else scheduleTimer();
+    };
+
+    scheduleTimer();
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('pointerdown', onUserActivity, { passive: true });
+    window.addEventListener('keydown', onUserActivity, { passive: true });
+    window.addEventListener('wheel', onUserActivity, { passive: true });
+    window.addEventListener('touchstart', onUserActivity, { passive: true });
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearTimer();
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerdown', onUserActivity);
+      window.removeEventListener('keydown', onUserActivity);
+      window.removeEventListener('wheel', onUserActivity);
+      window.removeEventListener('touchstart', onUserActivity);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [
+    settings.ambientIdleMinutes,
+    player.state.isPlaying,
+    player.state.currentTrack?.videoId,
+    ambientModeOpen,
+    miniMode,
+    videoMode,
+    onboardingOpen,
+    splashVisible,
+    importModalOpen,
+    playlistModalOpen,
+    profileModalOpen,
+    handleOpenAmbientScreensaver,
+  ]);
 
   const handleDownloadTrack = useCallback(
     async (track: Track) => {
@@ -1132,7 +1238,7 @@ export const App: React.FC = () => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setFullSheetOpen(false);
-        setAmbientModeOpen(false);
+        handleCloseAmbientMode();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
         return;

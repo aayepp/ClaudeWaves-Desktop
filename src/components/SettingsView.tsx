@@ -125,6 +125,13 @@ const SLEEP_OPTIONS: Array<{ label: string; min: number | null }> = [
   { label: '45m', min: 45 },
   { label: '60m', min: 60 },
 ];
+const AMBIENT_IDLE_OPTIONS: Array<{ label: string; min: number }> = [
+  { label: 'Off', min: 0 },
+  { label: '1m', min: 1 },
+  { label: '3m', min: 3 },
+  { label: '5m', min: 5 },
+  { label: '10m', min: 10 },
+];
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   activeTab,
@@ -1031,6 +1038,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         intensity={settings.glassIntensity}
                         onChange={(checked) => onUpdate({ globalMediaKeys: checked })}
                       />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div className="cw-muted" style={{ fontSize: 11.5 }}>
+                      Ambient Screensaver (Auto-Idle: {settings.ambientIdleMinutes > 0 ? `${settings.ambientIdleMinutes}m` : 'Off'})
+                    </div>
+                    <div className="cw-muted" style={{ fontSize: 11.5 }}>
+                      Auto-switches to Ambient Visualizer inside the window after inactivity while playing (Esc to exit)
+                    </div>
+                    <div className="cw-chips">
+                      {AMBIENT_IDLE_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.label}
+                          type="button"
+                          className="cw-mood-chip"
+                          style={{ padding: '5px 11px', fontSize: 12 }}
+                          data-active={(settings.ambientIdleMinutes ?? 3) === opt.min}
+                          onClick={() => onUpdate({ ambientIdleMinutes: opt.min })}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
 

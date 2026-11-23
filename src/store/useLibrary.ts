@@ -52,6 +52,11 @@ function mergeLibrary(parsed: Partial<LibraryData>, fallback: LibraryData): Libr
     ambVal === 'aurora' || ambVal === 'vinyl' || ambVal === 'halo' || ambVal === 'wave'
       ? ambVal
       : fallback.settings.ambientPreset;
+  const idleRaw = rawSettings.ambientIdleMinutes;
+  const migratedIdleMinutes =
+    idleRaw === 0 || idleRaw === 1 || idleRaw === 3 || idleRaw === 5 || idleRaw === 10
+      ? idleRaw
+      : fallback.settings.ambientIdleMinutes;
   return {
     settings: {
       ...DEFAULT_SETTINGS,
@@ -60,6 +65,7 @@ function mergeLibrary(parsed: Partial<LibraryData>, fallback: LibraryData): Libr
       themePreset: migratedPreset,
       layoutSkin: migratedSkin,
       ambientPreset: migratedAmbient,
+      ambientIdleMinutes: migratedIdleMinutes,
       closeToTray:
         typeof rawSettings.closeToTray === 'boolean'
           ? rawSettings.closeToTray

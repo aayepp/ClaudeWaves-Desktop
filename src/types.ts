@@ -157,6 +157,7 @@ export interface AppSettings {
   discordClientId: string;
   lastFmEnabled: boolean;
   ambientPreset: AmbientPreset;
+  ambientIdleMinutes: number; // 0 = Off, 1 | 3 | 5 | 10
 }
 
 export interface OfflineTrackEntry extends Track {
@@ -241,6 +242,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   discordClientId: '',
   lastFmEnabled: true,
   ambientPreset: 'aurora',
+  ambientIdleMinutes: 3,
 };
 
 // 12 Curated Accent Colors (Neutral Clean default + 11 refined hues, no harsh neon green default)
