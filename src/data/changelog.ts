@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.5';
+export const APP_VERSION = '1.4.6';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,16 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.6',
+    date: '2026-11-23',
+    summary: 'Audio Smoothness & Zero-Stutter Fix: fixed chunked audio proxy disconnect aborts, added 1-chunk lookahead prefetch + retry/LRU cache, switched AudioContext to playback latency hint, and disabled Electron background audio throttling.',
+    fixed: [
+      'Fixed premature chunked audio stream aborts on req close by switching disconnect detection to res close (!res.writableFinished) and adding 1-chunk lookahead prefetch, 3x transient retry, and a 24-chunk LRU cache in electron/ytmusic.cjs.',
+      'Switched AudioContext to { latencyHint: "playback" }, added playing buffer recovery and preservesPitch, and cleanly restored crossfade gain when seeking.',
+      'Disabled Electron renderer backgrounding and timer throttling so audio playback stays silky smooth even under heavy GPU blur or when unfocused/in tray.',
+    ],
+  },
   {
     version: '1.4.5',
     date: '2026-11-23',

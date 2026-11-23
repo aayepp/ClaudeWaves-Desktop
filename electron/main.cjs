@@ -33,11 +33,14 @@ const {
 } = require('./updater.cjs');
 const APP_PKG_VERSION = require('../package.json').version || '1.4.0';
 
-// Native high-refresh-rate (120Hz/240Hz+) GPU compositor flags for Windows DirectComposition
+// Native high-refresh-rate (120Hz/240Hz+) GPU compositor & real-time audio priority flags
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-smooth-scrolling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -456,6 +459,7 @@ function openLyricsOverlay() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
   lyricsOverlayWin.setMenu(null);
@@ -979,6 +983,7 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
 

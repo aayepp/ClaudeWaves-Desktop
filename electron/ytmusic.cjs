@@ -443,9 +443,104 @@ async function resolveVideoStream(videoId, targetHeight = 720, forceRefresh = fa
   return resolved;
 }
 
+const MAX_CACHED_CHUNKS = 24; // ~12 MB bounded RAM LRU cache for instant seek & zero gap reads
+const chunkLruCache = new Map();
+
+function getCachedChunk(key) {
+  if (!chunkLruCache.has(key)) return null;
+  const buf = chunkLruCache.get(key);
+  chunkLruCache.delete(key);
+  chunkLruCache.set(key, buf);
+  return buf;
+}
+
+function putCachedChunk(key, buf) {
+  if (!buf || buf.length === 0 || buf.length > CHUNK_BYTES) return;
+  if (chunkLruCache.has(key)) chunkLruCache.delete(key);
+  chunkLruCache.set(key, buf);
+  while (chunkLruCache.size > MAX_CACHED_CHUNKS) {
+    const oldestKey = chunkLruCache.keys().next().value;
+    chunkLruCache.delete(oldestKey);
+  }
+}
+
+async function fetchChunkWithRetry(streamRef, fetcher, pos, chunkEnd, externalSignal) {
+  const getKey = () =>
+    `${streamRef.current.videoId}|${streamRef.current.itag || streamRef.current.tier || 0}|${pos}-${chunkEnd}`;
+  const hit = getCachedChunk(getKey());
+  if (hit) return hit;
+
+  const backoffs = [200, 500];
+  let retryCount = 0;
+
+  while (retryCount < 3) {
+    if (externalSignal?.aborted) return null;
+
+    const controller = new AbortController();
+    const onExternalAbort = () => controller.abort();
+    externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
+    const timeoutId = setTimeout(() => controller.abort(), 12_000);
+
+    try {
+      const upstream = await fetch(streamRef.current.url, {
+        headers: {
+          'User-Agent': streamRef.current.userAgent,
+          Range: `bytes=${pos}-${chunkEnd}`,
+        },
+        signal: controller.signal,
+      });
+
+      if ((upstream.status === 403 || upstream.status === 410) && !streamRef.refreshedOnce) {
+        streamRef.refreshedOnce = true;
+        try {
+          streamRef.current = await fetcher(true);
+          continue;
+        } catch {
+          return null;
+        }
+      }
+
+      if (upstream.status >= 500 && retryCount < 2) {
+        await new Promise((r) => setTimeout(r, backoffs[retryCount] || 500));
+        retryCount += 1;
+        continue;
+      }
+
+      if (upstream.status !== 206 && upstream.status !== 200) {
+        return null;
+      }
+
+      let buf = Buffer.from(await upstream.arrayBuffer());
+      if (upstream.status === 200) {
+        const expectedLen = chunkEnd - pos + 1;
+        if (pos > 0 || buf.length > expectedLen) {
+          buf = buf.subarray(pos, pos + expectedLen);
+        }
+      }
+
+      if (buf.length > 0) {
+        putCachedChunk(getKey(), buf);
+      }
+      return buf;
+    } catch {
+      if (externalSignal?.aborted) return null;
+      if (retryCount < 2) {
+        await new Promise((r) => setTimeout(r, backoffs[retryCount] || 500));
+        retryCount += 1;
+        continue;
+      }
+      return null;
+    } finally {
+      clearTimeout(timeoutId);
+      externalSignal?.removeEventListener('abort', onExternalAbort);
+    }
+  }
+  return null;
+}
+
 async function handleChunkedProxy(req, res, fetcher) {
-  let stream = await fetcher(false);
-  const total = stream.contentLength;
+  const streamRef = { current: await fetcher(false), refreshedOnce: false };
+  const total = streamRef.current.contentLength;
 
   let start = 0;
   let end = total > 0 ? total - 1 : CHUNK_BYTES - 1;
@@ -471,7 +566,7 @@ async function handleChunkedProxy(req, res, fetcher) {
 
   const lengthToServe = total > 0 ? end - start + 1 : undefined;
   res.statusCode = isPartial && total > 0 ? 206 : 200;
-  res.setHeader('Content-Type', stream.mimeType);
+  res.setHeader('Content-Type', streamRef.current.mimeType);
   res.setHeader('Accept-Ranges', 'bytes');
   if (total > 0) {
     res.setHeader('Content-Length', String(lengthToServe));
@@ -486,57 +581,57 @@ async function handleChunkedProxy(req, res, fetcher) {
   }
 
   let closed = false;
-  let abortController = null;
-  req.on('close', () => {
+  const sessionAbort = new AbortController();
+  const abortAll = () => {
     closed = true;
-    abortController?.abort();
+    sessionAbort.abort();
+  };
+  res.on('close', () => {
+    if (!res.writableFinished) abortAll();
   });
 
   let pos = start;
-  let refreshedOnce = false;
+  let pendingPrefetch = null; // { startPos, promise }
 
-  while (!closed && (total <= 0 || pos <= end)) {
-    const chunkEnd = total > 0 ? Math.min(end, pos + CHUNK_BYTES - 1) : pos + CHUNK_BYTES - 1;
-    abortController = new AbortController();
+  try {
+    while (!closed && (total <= 0 || pos <= end)) {
+      const chunkEnd = total > 0 ? Math.min(end, pos + CHUNK_BYTES - 1) : pos + CHUNK_BYTES - 1;
 
-    let upstream;
-    try {
-      upstream = await fetch(stream.url, {
-        headers: {
-          'User-Agent': stream.userAgent,
-          Range: `bytes=${pos}-${chunkEnd}`,
-        },
-        signal: abortController.signal,
-      });
-    } catch {
-      break;
-    }
+      const buf =
+        pendingPrefetch && pendingPrefetch.startPos === pos
+          ? await pendingPrefetch.promise
+          : await fetchChunkWithRetry(streamRef, fetcher, pos, chunkEnd, sessionAbort.signal);
+      pendingPrefetch = null;
 
-    if ((upstream.status === 403 || upstream.status === 410) && !refreshedOnce) {
-      refreshedOnce = true;
-      try {
-        stream = await fetcher(true);
-        continue;
-      } catch {
-        break;
+      if (closed || res.writableEnded || !buf || buf.length === 0) break;
+
+      const nextPos = pos + buf.length;
+      if (!closed && (total <= 0 || nextPos <= end) && !(total <= 0 && buf.length < CHUNK_BYTES)) {
+        const nextEnd = total > 0 ? Math.min(end, nextPos + CHUNK_BYTES - 1) : nextPos + CHUNK_BYTES - 1;
+        pendingPrefetch = {
+          startPos: nextPos,
+          promise: fetchChunkWithRetry(streamRef, fetcher, nextPos, nextEnd, sessionAbort.signal),
+        };
       }
+
+      const ok = res.write(buf);
+      pos = nextPos;
+
+      if (!ok && !closed) {
+        await new Promise((resolve) => {
+          const onFinish = () => {
+            res.removeListener('drain', onFinish);
+            res.removeListener('close', onFinish);
+            resolve();
+          };
+          res.once('drain', onFinish);
+          res.once('close', onFinish);
+        });
+      }
+      if (total <= 0 && buf.length < CHUNK_BYTES) break;
     }
-
-    if (upstream.status !== 206 && upstream.status !== 200) {
-      break;
-    }
-
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    if (closed || res.writableEnded) break;
-    if (buf.length === 0) break;
-
-    const ok = res.write(buf);
-    pos += buf.length;
-
-    if (!ok) {
-      await new Promise((resolve) => res.once('drain', resolve));
-    }
-    if (total <= 0 && buf.length < CHUNK_BYTES) break;
+  } finally {
+    sessionAbort.abort();
   }
 
   if (!res.writableEnded) res.end();

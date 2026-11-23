@@ -112,7 +112,12 @@ export function usePlayer(
       return;
     }
     try {
-      const ctx = new AudioContext();
+      let ctx: AudioContext;
+      try {
+        ctx = new AudioContext({ latencyHint: 'playback' });
+      } catch {
+        ctx = new AudioContext();
+      }
       const source = ctx.createMediaElementSource(el);
       const combinedGains = combineEqWithAutoEq(
         eqGainsRef.current,
@@ -217,6 +222,7 @@ export function usePlayer(
     const el = new Audio();
     el.preload = 'auto';
     el.crossOrigin = 'anonymous';
+    el.preservesPitch = true;
     audioRef.current = el;
 
     const onTime = () => {
@@ -228,6 +234,12 @@ export function usePlayer(
       }
     };
     const onPlay = () => setState((prev) => ({ ...prev, isPlaying: true, isBuffering: false }));
+    const onPlaying = () => {
+      if (audioCtxRef.current?.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+      setState((prev) => (prev.isBuffering ? { ...prev, isBuffering: false } : prev));
+    };
     const onPause = () => setState((prev) => ({ ...prev, isPlaying: false }));
     const onWaiting = () => setState((prev) => ({ ...prev, isBuffering: true }));
     const onCanPlay = () => setState((prev) => ({ ...prev, isBuffering: false }));
@@ -263,6 +275,7 @@ export function usePlayer(
 
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('play', onPlay);
+    el.addEventListener('playing', onPlaying);
     el.addEventListener('pause', onPause);
     el.addEventListener('waiting', onWaiting);
     el.addEventListener('canplay', onCanPlay);
@@ -274,6 +287,7 @@ export function usePlayer(
       el.src = '';
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('play', onPlay);
+      el.removeEventListener('playing', onPlaying);
       el.removeEventListener('pause', onPause);
       el.removeEventListener('waiting', onWaiting);
       el.removeEventListener('canplay', onCanPlay);
@@ -321,6 +335,8 @@ export function usePlayer(
         if (remaining > 0 && remaining <= cf) {
           const level = Math.max(0.05, remaining / cf);
           gNode.gain.setTargetAtTime(level, ctx.currentTime, 0.08);
+        } else if (gNode.gain.value < 0.99) {
+          gNode.gain.setTargetAtTime(1, ctx.currentTime, 0.06);
         }
       }
     }, 33);
@@ -671,6 +687,9 @@ export function usePlayer(
   const seekTo = useCallback((ms: number) => {
     const clamped = Math.max(0, ms);
     setPlaybackPositionMs(clamped);
+    if (crossfadeRef.current > 0 && gainNodeRef.current && audioCtxRef.current) {
+      gainNodeRef.current.gain.setTargetAtTime(1, audioCtxRef.current.currentTime, 0.05);
+    }
     if (needsResolveRef.current) {
       pendingSeekMsRef.current = clamped;
       return;
