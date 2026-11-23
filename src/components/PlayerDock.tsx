@@ -27,6 +27,7 @@ import {
 import type { PlayerState } from '../hooks/usePlayer';
 import { usePlaybackPositionMs } from '../hooks/playbackClock';
 import { formatDuration, type LayoutSkin } from '../types';
+import { AbLoopButton } from './AbLoopButton';
 import { SkinPlayerDock } from './SkinPlayerDocks';
 import { SlimVolumeSlider } from './SlimVolumeSlider';
 import { WavySeekbar } from './WavySeekbar';
@@ -94,6 +95,7 @@ interface PlayerDockProps {
   onOpenAmbientMode?: () => void;
   outputPopoverOpen?: boolean;
   onToggleOutputPopover?: () => void;
+  onCycleAbLoop?: () => void;
 }
 
 export const PlayerDock: React.FC<PlayerDockProps> = React.memo(({
@@ -128,6 +130,7 @@ export const PlayerDock: React.FC<PlayerDockProps> = React.memo(({
   onOpenAmbientMode,
   outputPopoverOpen = false,
   onToggleOutputPopover,
+  onCycleAbLoop,
 }) => {
   const track = player.currentTrack;
   const maxDuration = Math.max(1000, player.durationMs || track?.durationMs || 1000);
@@ -173,6 +176,7 @@ export const PlayerDock: React.FC<PlayerDockProps> = React.memo(({
         onOpenAmbientMode={onOpenAmbientMode}
         outputPopoverOpen={outputPopoverOpen}
         onToggleOutputPopover={onToggleOutputPopover}
+        onCycleAbLoop={onCycleAbLoop}
       />
     );
   }
@@ -381,6 +385,11 @@ export const PlayerDock: React.FC<PlayerDockProps> = React.memo(({
                     onClick={onCycleRepeat}
                   />
                 </span>
+                <AbLoopButton
+                  abLoop={player.abLoop}
+                  hasTrack={Boolean(track)}
+                  onClick={onCycleAbLoop}
+                />
                 <span
                   className="cw-tip-anchor"
                   data-tip={

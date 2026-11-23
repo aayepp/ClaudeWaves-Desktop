@@ -25,6 +25,7 @@ import {
   type LyricsFontSize,
   type LyricsTranslateLang,
 } from '../types';
+import { AbLoopButton } from './AbLoopButton';
 import { CoverArtWaves } from './CoverArtWaves';
 import { SlimVolumeSlider } from './SlimVolumeSlider';
 import { SyncedVideoPlayer } from './SyncedVideoPlayer';
@@ -101,6 +102,7 @@ interface NowPlayingSheetProps {
   onBestPart: () => void;
   onToggleShuffle: () => void;
   onCycleRepeat: () => void;
+  onCycleAbLoop?: () => void;
   onToggleLike: () => void;
   onOpenArtist: (artistName: string) => void;
   onPlayQueueIndex: (index: number) => void;
@@ -145,6 +147,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
   onBestPart,
   onToggleShuffle,
   onCycleRepeat,
+  onCycleAbLoop,
   onToggleLike,
   onOpenArtist,
   onPlayQueueIndex,
@@ -393,6 +396,11 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
                 aria-label="Repeat"
                 icon={player.repeatMode === 'one' ? <Repeat1 size={16} className="cw-ic-repeat" /> : <Repeat size={16} className="cw-ic-repeat" />}
                 onClick={onCycleRepeat}
+              />
+              <AbLoopButton
+                abLoop={player.abLoop}
+                hasTrack={Boolean(track)}
+                onClick={onCycleAbLoop}
               />
             </div>
 

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { usePlaybackPositionMs } from '../hooks/playbackClock';
 import type { PlayerState } from '../hooks/usePlayer';
-import { AudioVisualizer } from './AudioVisualizer';
+import { CoverArtWaves } from './CoverArtWaves';
 
 const MiniProgressStrip: React.FC<{ totalDurationMs: number }> = ({ totalDurationMs }) => {
   const positionMs = usePlaybackPositionMs();
@@ -28,6 +28,8 @@ interface MiniPlayerViewProps {
   player: PlayerState;
   analyserRef: React.MutableRefObject<AnalyserNode | null>;
   accentHex: string;
+  waveColorHex: string;
+  isDark: boolean;
   intensity: number;
   isLiked: boolean;
   onExitMini: () => void;
@@ -42,6 +44,8 @@ export const MiniPlayerView: React.FC<MiniPlayerViewProps> = ({
   player,
   analyserRef,
   accentHex,
+  waveColorHex,
+  isDark,
   intensity,
   isLiked,
   onExitMini,
@@ -76,6 +80,13 @@ export const MiniPlayerView: React.FC<MiniPlayerViewProps> = ({
         />
       )}
       <div className="cw-mini-scrim" />
+      <CoverArtWaves
+        analyserRef={analyserRef}
+        isPlaying={player.isPlaying}
+        colorHex={waveColorHex}
+        isDark={isDark}
+        variant="mini"
+      />
 
       <div className="cw-mini-content">
         <div style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%' }}>
@@ -91,13 +102,6 @@ export const MiniPlayerView: React.FC<MiniPlayerViewProps> = ({
             <div className="cw-track-artist cw-ellipsis">
               {track?.artist ?? 'No song playing'}
             </div>
-            <AudioVisualizer
-              analyserRef={analyserRef}
-              isPlaying={player.isPlaying}
-              accentHex={accentHex}
-              barCount={20}
-              height={14}
-            />
           </div>
           <GlassButton
             size="sm"

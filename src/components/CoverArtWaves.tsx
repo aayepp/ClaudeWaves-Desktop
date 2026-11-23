@@ -5,7 +5,7 @@ interface CoverArtWavesProps {
   isPlaying: boolean;
   colorHex: string;
   isDark: boolean;
-  variant: 'side' | 'full';
+  variant: 'side' | 'full' | 'mini';
 }
 
 interface HslColor {
@@ -91,8 +91,8 @@ export const CoverArtWaves: React.FC<CoverArtWavesProps> = ({
     let rafId = 0;
     let disposed = false;
     let lastTime = performance.now();
-    let width = canvas.clientWidth || (variant === 'side' ? 320 : 460);
-    let height = canvas.clientHeight || (variant === 'side' ? 200 : 320);
+    let width = canvas.clientWidth || (variant === 'side' ? 320 : variant === 'mini' ? 384 : 460);
+    let height = canvas.clientHeight || (variant === 'side' ? 200 : variant === 'mini' ? 176 : 320);
 
     const freqData = new Uint8Array(64);
 
@@ -196,7 +196,8 @@ export const CoverArtWaves: React.FC<CoverArtWavesProps> = ({
 
       // 3 harmonious silk ribbon layers
       const isSide = variant === 'side';
-      const maxAmp = height * (isSide ? 0.21 : 0.175);
+      const isMini = variant === 'mini';
+      const maxAmp = height * (isMini ? 0.22 : isSide ? 0.21 : 0.175);
       const layers = [
         {
           color: palette[0],
@@ -206,9 +207,9 @@ export const CoverArtWaves: React.FC<CoverArtWavesProps> = ({
           phaseOffset: 0.0,
           yShift: -height * 0.035,
           ampScale: 1.0,
-          thickness: isSide ? 16 : 22,
-          peakAlpha: isDark ? 0.34 : 0.26,
-          crestAlpha: isDark ? 0.72 : 0.58,
+          thickness: isMini ? 14 : isSide ? 16 : 22,
+          peakAlpha: isMini ? (isDark ? 0.38 : 0.28) : (isDark ? 0.34 : 0.26),
+          crestAlpha: isMini ? (isDark ? 0.8 : 0.64) : (isDark ? 0.72 : 0.58),
         },
         {
           color: palette[1],
@@ -218,9 +219,9 @@ export const CoverArtWaves: React.FC<CoverArtWavesProps> = ({
           phaseOffset: 2.1,
           yShift: height * 0.015,
           ampScale: 0.88,
-          thickness: isSide ? 12 : 17,
-          peakAlpha: isDark ? 0.3 : 0.23,
-          crestAlpha: isDark ? 0.68 : 0.54,
+          thickness: isMini ? 10 : isSide ? 12 : 17,
+          peakAlpha: isMini ? (isDark ? 0.34 : 0.25) : (isDark ? 0.3 : 0.23),
+          crestAlpha: isMini ? (isDark ? 0.76 : 0.6) : (isDark ? 0.68 : 0.54),
         },
         {
           color: palette[2],
@@ -230,13 +231,13 @@ export const CoverArtWaves: React.FC<CoverArtWavesProps> = ({
           phaseOffset: 4.3,
           yShift: height * 0.045,
           ampScale: 0.72,
-          thickness: isSide ? 9 : 13,
-          peakAlpha: isDark ? 0.26 : 0.2,
-          crestAlpha: isDark ? 0.62 : 0.5,
+          thickness: isMini ? 7.5 : isSide ? 9 : 13,
+          peakAlpha: isMini ? (isDark ? 0.3 : 0.22) : (isDark ? 0.26 : 0.2),
+          crestAlpha: isMini ? (isDark ? 0.7 : 0.56) : (isDark ? 0.62 : 0.5),
         },
       ];
 
-      const steps = isSide ? 76 : 96;
+      const steps = isSide || isMini ? 76 : 96;
       const stepX = width / steps;
 
       for (let lIdx = 0; lIdx < layers.length; lIdx++) {

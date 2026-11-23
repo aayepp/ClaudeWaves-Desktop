@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.11';
+export const APP_VERSION = '1.4.12';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,17 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.12',
+    date: '2026-11-23',
+    summary: 'Mini Player CoverArtWaves Silk Ribbons & 1-Click A-B Loop Controls on Every Dock.',
+    added: [
+      'Direct 1-click A-B Repeat Loop button (A-B -> A 0:42 -> A↔B) right next to Repeat on Default Player Dock, all 6 alternate layout skins (Spotify, YT Music, Apple Music, Tidal, SoundCloud, Nothing), and Fullscreen Now Playing.',
+    ],
+    changed: [
+      'Replaced Mini Player bar visualizer with full-bleed CoverArtWaves 3-layer silk ribbon & bass-reactive aura wave behind the Mini Player artwork.',
+    ],
+  },
   {
     version: '1.4.11',
     date: '2026-11-23',

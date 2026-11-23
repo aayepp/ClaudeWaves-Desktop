@@ -1184,6 +1184,26 @@ export const App: React.FC = () => {
   const handleToggleOutputPopover = useCallback(() => {
     setOutputPopoverOpen((v) => !v);
   }, []);
+  const handleCycleAbLoop = useCallback(() => {
+    const { aMs, bMs } = playerStateRef.current.abLoop;
+    const pos = Math.max(0, getPlaybackPositionMs());
+    if (aMs === null) {
+      player.setLoopPointA();
+      showToast(`A-B Loop: Titik A (${formatDuration(pos)}) — tekan lagi untuk set B`);
+    } else if (bMs === null) {
+      if (Math.abs(pos - aMs) <= 400) {
+        showToast('Gerakkan lagu sedikit (>0.4s dari A) sebelum set B');
+        return;
+      }
+      player.setLoopPointB();
+      const lo = Math.min(aMs, pos);
+      const hi = Math.max(aMs, pos);
+      showToast(`A-B Loop aktif: ${formatDuration(lo)} ↔ ${formatDuration(hi)}`);
+    } else {
+      player.clearAbLoop();
+      showToast('A-B Loop dimatikan');
+    }
+  }, [player, showToast]);
   const handleExportBackup = useCallback(() => {
     const blob = new Blob([exportBackupJson()], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1576,6 +1596,8 @@ export const App: React.FC = () => {
           player={player.state}
           analyserRef={player.analyserRef}
           accentHex={activeAccent}
+          waveColorHex={waveColorHex}
+          isDark={isDark}
           intensity={intensity}
           isLiked={Boolean(player.state.currentTrack && likedIds.has(player.state.currentTrack.videoId))}
           onExitMini={() => toggleMiniMode(false)}
@@ -2029,6 +2051,7 @@ export const App: React.FC = () => {
       onOpenAmbientMode={handleOpenAmbientMode}
       outputPopoverOpen={outputPopoverOpen}
       onToggleOutputPopover={handleToggleOutputPopover}
+      onCycleAbLoop={handleCycleAbLoop}
     />
   );
 
@@ -3320,6 +3343,7 @@ export const App: React.FC = () => {
         onBestPart={handleBestPart}
         onToggleShuffle={player.toggleShuffle}
         onCycleRepeat={player.cycleRepeat}
+        onCycleAbLoop={handleCycleAbLoop}
         onToggleLike={() => player.state.currentTrack && toggleLike(player.state.currentTrack)}
         onOpenArtist={openArtist}
         onPlayQueueIndex={(idx) => player.playAtIndex(idx)}

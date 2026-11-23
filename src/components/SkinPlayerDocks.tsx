@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import type { PlayerState } from '../hooks/usePlayer';
 import { formatDuration, type LayoutSkin } from '../types';
+import { AbLoopButton } from './AbLoopButton';
 import { FlatSeekbar, PlaybackTimeCounter } from './FlatSeekbar';
 import { SlimVolumeSlider } from './SlimVolumeSlider';
 
@@ -57,6 +58,7 @@ export interface SkinPlayerDockProps {
   onOpenAmbientMode?: () => void;
   outputPopoverOpen?: boolean;
   onToggleOutputPopover?: () => void;
+  onCycleAbLoop?: () => void;
 }
 
 const RepeatIcon: React.FC<{ mode: PlayerState['repeatMode']; size?: number }> = ({
@@ -249,6 +251,7 @@ export const SkinPlayerDock: React.FC<SkinPlayerDockProps> = React.memo(({
   onOpenAmbientMode,
   outputPopoverOpen = false,
   onToggleOutputPopover,
+  onCycleAbLoop,
 }) => {
   const track = player.currentTrack;
   const maxDuration = Math.max(1000, player.durationMs || track?.durationMs || 1000);
@@ -353,6 +356,12 @@ export const SkinPlayerDock: React.FC<SkinPlayerDockProps> = React.memo(({
               <RepeatIcon mode={player.repeatMode} size={15} />
             </button>
           </span>
+          <AbLoopButton
+            abLoop={player.abLoop}
+            hasTrack={Boolean(track)}
+            tipPos="bottom"
+            onClick={onCycleAbLoop}
+          />
         </div>
 
         {/* Centered Apple Music LCD Pill */}
@@ -612,6 +621,7 @@ export const SkinPlayerDock: React.FC<SkinPlayerDockProps> = React.memo(({
                 <RepeatIcon mode={player.repeatMode} size={15} />
               </button>
             </span>
+            <AbLoopButton abLoop={player.abLoop} hasTrack={Boolean(track)} onClick={onCycleAbLoop} />
             <RightActionCluster {...clusterProps} volumeFirst />
           </div>
         </div>
@@ -743,6 +753,7 @@ export const SkinPlayerDock: React.FC<SkinPlayerDockProps> = React.memo(({
                   <RepeatIcon mode={player.repeatMode} size={15} />
                 </button>
               </span>
+              <AbLoopButton abLoop={player.abLoop} hasTrack={Boolean(track)} onClick={onCycleAbLoop} />
             </div>
 
             <div className="cw-spotify-seek-row">
@@ -826,6 +837,7 @@ export const SkinPlayerDock: React.FC<SkinPlayerDockProps> = React.memo(({
                 <RepeatIcon mode={player.repeatMode} size={14} />
               </button>
             </span>
+            <AbLoopButton abLoop={player.abLoop} hasTrack={Boolean(track)} onClick={onCycleAbLoop} />
           </div>
 
           <div className="cw-sc-wave-wrap">
@@ -1016,6 +1028,7 @@ export const SkinPlayerDock: React.FC<SkinPlayerDockProps> = React.memo(({
                   <RepeatIcon mode={player.repeatMode} size={14} />
                 </button>
               </span>
+              <AbLoopButton abLoop={player.abLoop} hasTrack={Boolean(track)} onClick={onCycleAbLoop} />
             </div>
 
             <div className="cw-spotify-seek-row">
@@ -1158,6 +1171,7 @@ export const SkinPlayerDock: React.FC<SkinPlayerDockProps> = React.memo(({
                 <RepeatIcon mode={player.repeatMode} size={15} />
               </button>
             </span>
+            <AbLoopButton abLoop={player.abLoop} hasTrack={Boolean(track)} onClick={onCycleAbLoop} />
           </div>
 
           <div className="cw-spotify-seek-row">
