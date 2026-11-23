@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Maximize2, Mic2, Minimize2, Move, X } from 'lucide-react';
+import { Loader2, Maximize2, Mic2, Minimize2, Move, RefreshCw, X } from 'lucide-react';
 import { getPlaybackPositionMs, subscribePlaybackPosition } from '../hooks/playbackClock';
 
 export interface FloatingVideoBox {
@@ -52,6 +52,7 @@ interface SyncedVideoPlayerProps {
 
 interface VideoMeta {
   resolvedVideoId?: string;
+  videoTitle?: string;
   tier?: number;
   height: number;
   width?: number;
@@ -60,6 +61,9 @@ interface VideoMeta {
   codec?: string;
   availableHeights: number[];
   mimeType?: string;
+  candidatesCount?: number;
+  candidateIndex?: number;
+  isOfficialMv?: boolean;
   proxyUrl: string;
 }
 
@@ -89,6 +93,11 @@ export const SyncedVideoPlayer: React.FC<SyncedVideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const backdropPressedRef = useRef(false);
   const [meta, setMeta] = useState<VideoMeta | null>(null);
+  const [candidateState, setCandidateState] = useState<{ videoId: string; index: number }>({
+    videoId,
+    index: 0,
+  });
+  const candidateIndex = candidateState.videoId === videoId ? candidateState.index : 0;
   const [decodedRes, setDecodedRes] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [buffering, setBuffering] = useState(true);
@@ -211,6 +220,7 @@ export const SyncedVideoPlayer: React.FC<SyncedVideoPlayerProps> = ({
       quality: String(quality),
       title,
       artist,
+      candidateIndex: String(candidateIndex),
     });
     fetch(`/api/yt/video?${qs.toString()}`)
       .then(async (res) => {
@@ -234,7 +244,7 @@ export const SyncedVideoPlayer: React.FC<SyncedVideoPlayerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [videoId, quality, title, artist]);
+  }, [videoId, quality, title, artist, candidateIndex]);
 
   // Sync play/pause & playbackRate with master audio
   useEffect(() => {
@@ -447,6 +457,26 @@ export const SyncedVideoPlayer: React.FC<SyncedVideoPlayerProps> = ({
               {meta?.codec ? ` • ${meta.codec}` : ''}
             </span>
           )}
+          {(meta?.candidatesCount ?? 0) > 1 && (
+            <button
+              type="button"
+              className="cw-video-mv-switch cw-tip-anchor"
+              data-tip="Switch to another Music Video"
+              data-tip-pos="bottom"
+              onClick={() =>
+                setCandidateState((prev) => {
+                  const count = Math.max(1, meta?.candidatesCount || 1);
+                  const cur = meta?.candidateIndex ?? (prev.videoId === videoId ? prev.index : 0);
+                  return { videoId, index: (cur + 1) % count };
+                })
+              }
+            >
+              <RefreshCw size={11} />
+              <span>
+                MV {(meta?.candidateIndex ?? candidateIndex) + 1}/{meta?.candidatesCount}
+              </span>
+            </button>
+          )}
           {mode === 'pip' && !activeFull && (
             <span className="cw-video-drag-badge cw-tip-anchor" data-tip="Drag to move" data-tip-pos="bottom">
               <Move size={11} />
@@ -493,8 +523,9 @@ export const SyncedVideoPlayer: React.FC<SyncedVideoPlayerProps> = ({
       </div>
 
       {mode === 'pip' && (
-        <div className="cw-pip-caption cw-ellipsis">
-          MV • {title}{artist ? ` — ${artist}` : ''}
+        <div className="cw-pip-caption cw-ellipsis" title={meta?.videoTitle || title}>
+          {meta?.isOfficialMv ? 'Official MV' : 'MV'} •{' '}
+          {meta?.videoTitle || `${title}${artist ? ` — ${artist}` : ''}`}
         </div>
       )}
 

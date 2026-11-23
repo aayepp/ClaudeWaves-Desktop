@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.4.7';
+export const APP_VERSION = '1.4.8';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,18 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.4.8',
+    date: '2026-11-23',
+    summary: 'Official MV Auto-Match & 1-Click Switch MV: automatically prioritizes true Official Music Videos over lyric videos/visualizers and lets you cycle alternate MV candidates right from the synced video overlay.',
+    added: [
+      'YouTube Music Song -> Official MV counterpart lookup combined with scored search candidate ranking that boosts Official Music Videos and deprioritizes lyric videos, visualizers, official audio, covers, and live uploads.',
+      '1-click Switch MV (MV 1/N) selector pill directly on the synced video overlay bar plus Official MV indicator and matched video title caption.',
+    ],
+    fixed: [
+      'Replaced naive regex videoId lookup in resolveVideoStream so 1:1 Art Tracks and already-loaded lyric/audio uploads upgrade automatically when a real Official Music Video is available.',
+    ],
+  },
   {
     version: '1.4.7',
     date: '2026-11-23',

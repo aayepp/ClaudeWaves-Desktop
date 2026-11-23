@@ -251,22 +251,205 @@ async function resolveAudioStream(videoId, forceRefresh = false) {
 
 const mvLookupCache = new Map();
 
-async function findMusicVideoId(title, artist) {
-  const q = `${title || ''} ${artist || ''}`.trim();
-  if (!q) return null;
-  if (mvLookupCache.has(q)) return mvLookupCache.get(q);
-  try {
-    const data = await postInnerTube('search', {
-      query: q,
-      params: 'EgWKAQIQAWoKEAkQBRAKEAMQBA%3D%3D', // YouTube Music Videos filter
-    });
-    const m = /"videoId":"([A-Za-z0-9_-]{11})"/.exec(JSON.stringify(data));
-    const found = m ? m[1] : null;
-    mvLookupCache.set(q, found);
-    return found;
-  } catch {
-    return null;
+const NON_MV_PENALTY_RULES = [
+  { re: /\b(lyrics?|lirik)\b/i, checkRe: /\b(lyrics?|lirik)\b/i, penalty: -160, nonMv: true },
+  { re: /\b(official\s+audio|audio\s+only|audio)\b/i, checkRe: /\baudio\b/i, penalty: -170, nonMv: true },
+  { re: /\bvisuali[sz]er\b/i, checkRe: /\bvisuali[sz]er\b/i, penalty: -135, nonMv: true },
+  { re: /\b(karaoke|instrumental|backing\s+track)\b/i, checkRe: /\b(karaoke|instrumental|backing\s+track)\b/i, penalty: -180, nonMv: true },
+  { re: /\b(slowed|reverb|nightcore|sped\s+up|8d)\b/i, checkRe: /\b(slowed|reverb|nightcore|sped\s+up|8d)\b/i, penalty: -170, nonMv: true },
+  { re: /\b(cover|reaction|teaser|trailer|behind\s+the\s+scenes|making\s+of|shorts?)\b/i, checkRe: /\b(cover|reaction|teaser|trailer|behind\s+the\s+scenes|making\s+of|shorts?)\b/i, penalty: -145, nonMv: false },
+  { re: /\bremix\b/i, checkRe: /\bremix\b/i, penalty: -90, nonMv: false },
+  { re: /\b(live|acoustic|unplugged|performance|concert)\b/i, checkRe: /\b(live|acoustic|unplugged|performance|concert)\b/i, penalty: -70, nonMv: false },
+];
+
+function cleanSearchTitle(title) {
+  return String(title || '')
+    .replace(/[\[(][^\]\)]*(official\s*(audio|lyric|lyrics|visualizer|visualiser)|lyric\s*video|lyrics?|audio|feat\.?[^\]\)]*|ft\.?[^\]\)]*)[^\]\)]*[\])]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function runsToText(obj) {
+  if (!obj) return '';
+  if (Array.isArray(obj.runs)) {
+    return obj.runs.map((r) => r?.text || '').join('').trim();
   }
+  return String(obj.simpleText || '').trim();
+}
+
+function walkJson(node, visitor) {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const item of node) walkJson(item, visitor);
+    return;
+  }
+  visitor(node);
+  for (const val of Object.values(node)) {
+    if (val && typeof val === 'object') walkJson(val, visitor);
+  }
+}
+
+function isLikelyNonMvTitle(videoTitle, originalTrackTitle = '') {
+  const vt = String(videoTitle || '');
+  const ot = String(originalTrackTitle || '');
+  if (!vt) return false;
+  return NON_MV_PENALTY_RULES.some((rule) => rule.nonMv && rule.re.test(vt) && !rule.checkRe.test(ot));
+}
+
+function scoreMvCandidate(candTitle, candChannel, originalTitle, originalArtist, opts = {}) {
+  if (opts.musicVideoType === 'MUSIC_VIDEO_TYPE_ATV') return -999;
+
+  const ct = String(candTitle || '');
+  const cc = String(candChannel || '');
+  const ot = String(originalTitle || '');
+  const oa = String(originalArtist || '');
+  const combined = `${ct} ${cc}`.toLowerCase();
+
+  let score = 0;
+  if (opts.musicVideoType === 'MUSIC_VIDEO_TYPE_OMV') score += 220;
+
+  if (/\bofficial\s+music\s+video\b/i.test(ct)) score += 130;
+  else if (/\bofficial\s+m\/?v\b|\bm\/v\b|[\[(]\s*mv\s*[\])]/i.test(ct)) score += 115;
+  else if (/\bofficial\s+video\b/i.test(ct)) score += 100;
+  else if (/\bmusic\s+video\b/i.test(ct)) score += 70;
+
+  const primaryArtist = oa.split(/[,&•×/]|feat\.?|ft\.?/i)[0].trim().toLowerCase();
+  if (primaryArtist.length >= 2 && combined.includes(primaryArtist)) {
+    score += 35;
+  }
+  if (/vevo\b|official$/i.test(cc)) score += 20;
+
+  const titleTokens = cleanSearchTitle(ot)
+    .toLowerCase()
+    .split(/[^a-z0-9\p{L}\p{N}]+/u)
+    .filter((t) => t.length >= 2);
+  if (titleTokens.length > 0) {
+    const matched = titleTokens.filter((t) => ct.toLowerCase().includes(t)).length;
+    if (matched >= Math.ceil(titleTokens.length / 2)) score += 30;
+    else score -= 40;
+  }
+
+  for (const rule of NON_MV_PENALTY_RULES) {
+    if (rule.re.test(ct) && !rule.checkRe.test(ot)) {
+      score += rule.penalty;
+    }
+  }
+
+  return score;
+}
+
+async function findCounterpartMv(videoId) {
+  if (!videoId) return [];
+  const results = [];
+  try {
+    const data = await postInnerTube('next', { videoId, isAudioOnly: false });
+    walkJson(data, (node) => {
+      const wrapper = node.playlistPanelVideoWrapperRenderer;
+      if (!wrapper || !Array.isArray(wrapper.counterpart)) return;
+      for (const cp of wrapper.counterpart) {
+        const pv = cp?.counterpartRenderer?.playlistPanelVideoRenderer;
+        const cpVid = pv?.videoId;
+        if (!cpVid || cpVid === videoId) continue;
+        const musicVideoType =
+          pv?.navigationEndpoint?.watchEndpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig
+            ?.musicVideoType || '';
+        if (musicVideoType === 'MUSIC_VIDEO_TYPE_ATV') continue;
+        results.push({
+          videoId: cpVid,
+          title: runsToText(pv?.title),
+          channel: runsToText(pv?.longBylineText) || runsToText(pv?.shortBylineText),
+          musicVideoType: musicVideoType || 'MUSIC_VIDEO_TYPE_OMV',
+        });
+      }
+    });
+  } catch {
+    // Ignore InnerTube counterpart lookup errors; search candidates still handle MV resolution.
+  }
+  return results;
+}
+
+function extractSearchVideoCandidates(data) {
+  const results = [];
+  walkJson(data, (node) => {
+    const item = node.musicResponsiveListItemRenderer;
+    if (!item) return;
+
+    let watchEndpoint =
+      item?.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer
+        ?.playNavigationEndpoint?.watchEndpoint;
+    if (!watchEndpoint) {
+      walkJson(item, (sub) => {
+        if (!watchEndpoint && sub?.watchEndpoint?.videoId) watchEndpoint = sub.watchEndpoint;
+      });
+    }
+
+    const vid = item?.playlistItemData?.videoId || watchEndpoint?.videoId;
+    if (!vid || typeof vid !== 'string') return;
+    const musicVideoType =
+      watchEndpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType || '';
+    if (musicVideoType === 'MUSIC_VIDEO_TYPE_ATV') return;
+
+    const flex = Array.isArray(item.flexColumns) ? item.flexColumns : [];
+    const candTitle = runsToText(flex[0]?.musicResponsiveListItemFlexColumnRenderer?.text);
+    const candChannel = runsToText(flex[1]?.musicResponsiveListItemFlexColumnRenderer?.text);
+    results.push({ videoId: vid, title: candTitle, channel: candChannel, musicVideoType });
+  });
+  return results;
+}
+
+async function findMusicVideoCandidates(title, artist, originalVideoId = '') {
+  const cleanTitle = cleanSearchTitle(title) || String(title || '').trim();
+  const cleanArtist = String(artist || '').trim();
+  const cacheKey = `${originalVideoId || ''}|${cleanTitle.toLowerCase()}|${cleanArtist.toLowerCase()}`;
+  if (!cleanTitle) return [];
+  if (mvLookupCache.has(cacheKey)) return mvLookupCache.get(cacheKey);
+
+  const primaryQuery = `${cleanTitle} ${cleanArtist} official music video`.trim();
+  const [cpRes, searchRes] = await Promise.allSettled([
+    originalVideoId ? findCounterpartMv(originalVideoId) : Promise.resolve([]),
+    postInnerTube('search', {
+      query: primaryQuery,
+      params: 'EgWKAQIQAWoKEAkQBRAKEAMQBA%3D%3D', // YouTube Music Videos filter
+    }),
+  ]);
+
+  const rawPool = [];
+  if (cpRes.status === 'fulfilled') rawPool.push(...cpRes.value);
+  const firstSearchList =
+    searchRes.status === 'fulfilled' ? extractSearchVideoCandidates(searchRes.value) : [];
+  rawPool.push(...firstSearchList);
+
+  if (firstSearchList.length < 2) {
+    try {
+      const fallbackData = await postInnerTube('search', {
+        query: `${cleanTitle} ${cleanArtist}`.trim(),
+        params: 'EgWKAQIQAWoKEAkQBRAKEAMQBA%3D%3D',
+      });
+      rawPool.push(...extractSearchVideoCandidates(fallbackData));
+    } catch {
+      // Ignore fallback search failure; use whatever counterpart/first search gave us.
+    }
+  }
+
+  const byId = new Map();
+  for (const item of rawPool) {
+    if (!item?.videoId) continue;
+    const score = scoreMvCandidate(item.title, item.channel, title, artist, {
+      musicVideoType: item.musicVideoType,
+    });
+    const prev = byId.get(item.videoId);
+    if (!prev || score > prev.score) {
+      byId.set(item.videoId, { ...item, score });
+    }
+  }
+
+  const sorted = Array.from(byId.values())
+    .filter((c) => c.score > -500)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+
+  setBoundedMap(mvLookupCache, cacheKey, sorted, 120);
+  return sorted;
 }
 
 const STANDARD_VIDEO_TIERS = [360, 480, 720, 1080, 1440, 2160];
@@ -291,8 +474,26 @@ function parseQualityTier(fmt) {
   return best;
 }
 
-async function resolveVideoStream(videoId, targetHeight = 720, forceRefresh = false, title = '', artist = '') {
-  const key = `${videoId}|${targetHeight}|${title ? 'mv' : 'raw'}`;
+const mvOrderedIdsCache = new Map();
+
+function setBoundedMap(map, key, value, max = 120) {
+  if (map.size >= max && !map.has(key)) {
+    const oldestKey = map.keys().next().value;
+    map.delete(oldestKey);
+  }
+  map.set(key, value);
+}
+
+async function resolveVideoStream(
+  videoId,
+  targetHeight = 720,
+  forceRefresh = false,
+  title = '',
+  artist = '',
+  candidateIndex = 0,
+) {
+  const idxReq = Math.max(0, Number(candidateIndex) || 0);
+  const key = `${videoId}|${targetHeight}|${title ? `mv:${idxReq}` : 'raw'}`;
   const now = Date.now();
   if (!forceRefresh) {
     const cached = videoStreamCache.get(key);
@@ -401,6 +602,8 @@ async function resolveVideoStream(videoId, targetHeight = 720, forceRefresh = fa
 
         return {
           videoId: targetVid,
+          videoTitle: String(root?.videoDetails?.title || ''),
+          videoAuthor: String(root?.videoDetails?.author || ''),
           url: chosen.url,
           userAgent: client.userAgent,
           mimeType: chosen.mimeType.split(';')[0] || 'video/webm',
@@ -423,15 +626,79 @@ async function resolveVideoStream(videoId, targetHeight = 720, forceRefresh = fa
     return null;
   };
 
-  let resolved = await fetchForId(videoId);
-  // If playing a YouTube Music Song (1:1 static square Art Track), automatically resolve the real 16:9 Music Video!
-  if (resolved && resolved.isSquareArtTrack && title) {
-    const mvId = await findMusicVideoId(title, artist);
-    if (mvId && mvId !== videoId) {
-      const mvResolved = await fetchForId(mvId);
-      if (mvResolved && !mvResolved.isSquareArtTrack) {
-        resolved = mvResolved;
+  let resolved = null;
+  let actualIdx = 0;
+  let candidatesCount = 1;
+
+  if (!title) {
+    resolved = await fetchForId(videoId);
+  } else {
+    const orderKey = `${videoId}|${cleanSearchTitle(title).toLowerCase()}|${String(artist || '').trim().toLowerCase()}`;
+    const candidatesPromise = findMusicVideoCandidates(title, artist, videoId);
+    let orderedIds = idxReq > 0 ? mvOrderedIdsCache.get(orderKey) : null;
+    let baseResolved = null;
+
+    if (!orderedIds) {
+      const [baseOut, rawCandidates] = await Promise.all([
+        idxReq === 0 ? fetchForId(videoId) : Promise.resolve(null),
+        candidatesPromise,
+      ]);
+      baseResolved = baseOut;
+
+      const candIds = rawCandidates.map((c) => c.videoId);
+      const baseIsSquare = !baseResolved || baseResolved.isSquareArtTrack;
+      const baseIsNonMv = baseResolved ? isLikelyNonMvTitle(baseResolved.videoTitle, title) : true;
+      const baseScore =
+        baseResolved && !baseResolved.isSquareArtTrack
+          ? scoreMvCandidate(baseResolved.videoTitle, baseResolved.videoAuthor, title, artist)
+          : -999;
+      const topCand = rawCandidates[0];
+      const topIsClearlyBetter = Boolean(
+        topCand &&
+          topCand.videoId !== videoId &&
+          (topCand.musicVideoType === 'MUSIC_VIDEO_TYPE_OMV' ||
+            (topCand.score >= 70 && topCand.score >= baseScore + 45)),
+      );
+      const shouldReplace =
+        baseIsSquare ||
+        (baseIsNonMv && Boolean(topCand && topCand.videoId !== videoId && topCand.score > baseScore)) ||
+        topIsClearlyBetter;
+
+      const rawOrdered =
+        idxReq > 0
+          ? [...candIds, ...(!candIds.includes(videoId) ? [videoId] : [])]
+          : shouldReplace
+            ? [...candIds, ...(!baseIsSquare && !candIds.includes(videoId) ? [videoId] : [])]
+            : [videoId, ...candIds.filter((id) => id !== videoId)];
+
+      orderedIds = Array.from(new Set(rawOrdered.filter(Boolean))).slice(0, 6);
+      if (orderedIds.length === 0) orderedIds = [videoId];
+      setBoundedMap(mvOrderedIdsCache, orderKey, orderedIds, 120);
+    }
+
+    candidatesCount = orderedIds.length;
+    const startIdx = idxReq % orderedIds.length;
+    let fallbackPlayable = baseResolved;
+
+    for (let offset = 0; offset < orderedIds.length; offset += 1) {
+      const idx = (startIdx + offset) % orderedIds.length;
+      const targetVid = orderedIds[idx];
+      const candStream =
+        targetVid === videoId && baseResolved ? baseResolved : await fetchForId(targetVid);
+      if (!candStream) continue;
+      if (!fallbackPlayable) {
+        fallbackPlayable = candStream;
+        actualIdx = idx;
       }
+      if (!candStream.isSquareArtTrack) {
+        resolved = candStream;
+        actualIdx = idx;
+        break;
+      }
+    }
+
+    if (!resolved) {
+      resolved = fallbackPlayable;
     }
   }
 
@@ -439,9 +706,17 @@ async function resolveVideoStream(videoId, targetHeight = 720, forceRefresh = fa
     throw new Error(`No playable video stream (${errors.join('; ')})`);
   }
 
-  videoStreamCache.set(key, resolved);
-  videoStreamCache.set(`${resolved.videoId}|${resolved.tier}|raw`, resolved);
-  return resolved;
+  const enriched = {
+    ...resolved,
+    videoTitle: resolved.videoTitle || '',
+    candidatesCount,
+    candidateIndex: actualIdx,
+    isOfficialMv: !resolved.isSquareArtTrack && !isLikelyNonMvTitle(resolved.videoTitle, title),
+  };
+
+  videoStreamCache.set(key, enriched);
+  videoStreamCache.set(`${enriched.videoId}|${enriched.tier}|raw`, enriched);
+  return enriched;
 }
 
 const MAX_CACHED_CHUNKS = 24; // ~12 MB bounded RAM LRU cache for instant seek & zero gap reads
@@ -797,13 +1072,25 @@ async function handleApiRequest(req, res) {
     const quality = Number(parsed.searchParams.get('quality') ?? '720') || 720;
     const title = parsed.searchParams.get('title') ?? '';
     const artist = parsed.searchParams.get('artist') ?? '';
+    const candidateIndex = Math.max(
+      0,
+      Number.parseInt(parsed.searchParams.get('candidateIndex') ?? '0', 10) || 0,
+    );
     if (!videoId) {
       sendJson(res, 400, { error: 'Missing videoId' });
       return true;
     }
-    const resolved = await resolveVideoStream(videoId, quality, false, title, artist);
+    const resolved = await resolveVideoStream(
+      videoId,
+      quality,
+      false,
+      title,
+      artist,
+      candidateIndex,
+    );
     sendJson(res, 200, {
       resolvedVideoId: resolved.videoId,
+      videoTitle: resolved.videoTitle || '',
       tier: resolved.tier,
       height: resolved.height,
       width: resolved.width,
@@ -813,6 +1100,9 @@ async function handleApiRequest(req, res) {
       availableHeights: resolved.availableHeights,
       mimeType: resolved.mimeType,
       source: resolved.source,
+      candidatesCount: resolved.candidatesCount ?? 1,
+      candidateIndex: resolved.candidateIndex ?? 0,
+      isOfficialMv: Boolean(resolved.isOfficialMv),
       proxyUrl: `/api/video-proxy?videoId=${encodeURIComponent(resolved.videoId)}&quality=${resolved.tier}`,
     });
     return true;
