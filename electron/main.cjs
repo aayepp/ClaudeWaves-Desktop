@@ -792,32 +792,61 @@ function openSpotifyLoginWindow() {
     });
 
     let settled = false;
+    let capturedAccessToken = null;
+    let capturedClientToken = null;
+    let resolveTimer = null;
+
     const finish = (val) => {
       if (settled) return;
       settled = true;
+      if (resolveTimer) {
+        clearTimeout(resolveTimer);
+        resolveTimer = null;
+      }
+      try {
+        ses.webRequest.onBeforeSendHeaders(null);
+      } catch {
+        // Ignore cleanup errors if session already torn down
+      }
       resolve(val);
       if (!win.isDestroyed()) win.close();
     };
+
+    // Capture live Bearer access token and Client-Token directly from the player's own API calls
+    ses.webRequest.onBeforeSendHeaders(
+      { urls: ['https://api-partner.spotify.com/*', 'https://api.spotify.com/*'] },
+      (details, callback) => {
+        const hdrs = details.requestHeaders || {};
+        for (const [key, value] of Object.entries(hdrs)) {
+          const lower = key.toLowerCase();
+          if (lower === 'authorization' && typeof value === 'string' && value.startsWith('Bearer ')) {
+            const tok = value.slice(7).trim();
+            if (tok.length >= 100) capturedAccessToken = tok;
+          } else if (lower === 'client-token' && typeof value === 'string' && value.trim()) {
+            capturedClientToken = value.trim();
+          }
+        }
+        callback({ requestHeaders: hdrs });
+      },
+    );
 
     const checkSpotify = async () => {
       try {
         const list = await ses.cookies.get({ url: 'https://open.spotify.com' });
         const spdc = list.find((c) => c.name === 'sp_dc')?.value;
         if (!spdc) return;
-        let accessToken = null;
-        try {
-          accessToken = await win.webContents.executeJavaScript(`
-            (async () => {
-              const r = await fetch('https://open.spotify.com/get_access_token?reason=transport&productType=web_player', { credentials: 'include' });
-              if (!r.ok) return null;
-              const d = await r.json();
-              return d && !d.isAnonymous ? d.accessToken : null;
-            })();
-          `);
-        } catch {
-          // Will refresh server-side with sp_dc
+
+        if (capturedAccessToken) {
+          finish({ spdc, accessToken: capturedAccessToken, clientToken: capturedClientToken });
+          return;
         }
-        finish({ spdc, accessToken });
+
+        // Wait briefly for open.spotify.com to issue its first authenticated API request
+        if (!resolveTimer) {
+          resolveTimer = setTimeout(() => {
+            finish({ spdc, accessToken: capturedAccessToken, clientToken: capturedClientToken });
+          }, 1200);
+        }
       } catch {
         // Ignore transient errors
       }

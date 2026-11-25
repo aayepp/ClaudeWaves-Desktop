@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GlassButton, GlassCard, GlassInput, GlassSegmented } from '@zakisheriff/liquid-glass';
-import { CheckSquare, Download, Heart, Loader2, Square, X } from 'lucide-react';
+import { CheckSquare, Download, FileSpreadsheet, Heart, Loader2, Square, Upload, X } from 'lucide-react';
 import {
   fetchMySpotifyPlaylists,
   fetchMyYtPlaylists,
   importPlaylistByUrl,
+  importPlaylistFromCsv,
+  importSpotifyLikedSongs,
   type AuthStatus,
   type RemotePlaylistItem,
 } from '../api/auth';
@@ -55,6 +57,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loadingLists, setLoadingLists] = useState(false);
 
+  const [csvFileName, setCsvFileName] = useState('');
+  const [csvText, setCsvText] = useState('');
+  const [csvTitle, setCsvTitle] = useState('');
+  const [csvDragOver, setCsvDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
     setTab(initialTab);
@@ -63,6 +71,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     setErrorMsg(null);
     setStatusMsg(null);
     setProgress(null);
+    setCsvDragOver(false);
   }, [open, initialTab]);
 
   useEffect(() => {
@@ -156,6 +165,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     setErrorMsg(null);
     setStatusMsg(null);
     let importedCount = 0;
+    let lastErr: string | null = null;
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -168,17 +178,77 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           sourceId: target,
         });
         importedCount++;
-      } catch {
-        // Continue remaining playlists cleanly
+      } catch (err) {
+        lastErr = err instanceof Error ? err.message : 'Import failed';
       }
     }
 
     setProgress({ done: items.length, total: items.length, label: 'Done' });
     setBusy(false);
     setSelectedIds(new Set());
-    setStatusMsg(`Imported ${importedCount} / ${items.length} playlists!`);
+    if (importedCount === 0 && lastErr) {
+      setErrorMsg(lastErr);
+    } else {
+      setStatusMsg(`Imported ${importedCount} / ${items.length} playlists!`);
+    }
     if (importedCount > 0 && items.length === 1) {
       onClose();
+    }
+  };
+
+  const handleSyncSpotifyLiked = async () => {
+    setBusy(true);
+    setErrorMsg(null);
+    setStatusMsg('Fetching Spotify Liked Songs & matching on YouTube Music...');
+    try {
+      const res = await importSpotifyLikedSongs();
+      onSyncedLiked(res.tracks);
+      const total = res.totalSourceTracks ?? res.tracks.length;
+      setStatusMsg(`Synced ${res.tracks.length} / ${total} Spotify Liked Songs!`);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to sync Spotify Liked Songs');
+      setStatusMsg(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadCsvFile = async (file: File | undefined) => {
+    if (!file) return;
+    setErrorMsg(null);
+    try {
+      const text = await file.text();
+      setCsvFileName(file.name);
+      setCsvText(text);
+      const suggested =
+        file.name
+          .replace(/\.(csv|txt)$/i, '')
+          .replace(/[_-]+/g, ' ')
+          .trim() || 'Imported CSV Playlist';
+      setCsvTitle(suggested);
+    } catch {
+      setErrorMsg('Could not read selected CSV file.');
+    }
+  };
+
+  const handleImportCsv = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!csvText.trim()) return;
+    setBusy(true);
+    setErrorMsg(null);
+    setStatusMsg('Parsing CSV & matching tracks on YouTube Music...');
+    try {
+      const res = await importPlaylistFromCsv(csvText, csvFileName || undefined, csvTitle.trim() || undefined);
+      onImportedPlaylist(res.title, res.tracks, true, { source: 'spotify' });
+      setCsvFileName('');
+      setCsvText('');
+      setCsvTitle('');
+      onClose();
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'CSV import failed');
+      setStatusMsg(null);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -228,7 +298,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               intensity={intensity}
               disabled={busy}
               icon={<Heart size={14} />}
-              onClick={() => handleImportSingleUrl('VLLM', true)}
+              onClick={() => (tab === 2 ? handleSyncSpotifyLiked() : handleImportSingleUrl('VLLM', true))}
             >
               Sync Liked
             </GlassButton>
@@ -370,7 +440,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
 
             <GlassSegmented
               size="sm"
-              options={['Paste Link', 'YouTube Music', 'Spotify']}
+              options={['Paste Link', 'YouTube Music', 'Spotify', 'CSV / Exportify']}
               value={tab}
               intensity={intensity}
               onChange={setTab}
@@ -415,7 +485,81 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             )}
 
             {tab === 1 && renderAccountPicker(auth.yt.connected, 'YouTube Music', true)}
-            {tab === 2 && renderAccountPicker(auth.spotify.connected, 'Spotify', false)}
+            {tab === 2 && renderAccountPicker(auth.spotify.connected, 'Spotify', true)}
+            {tab === 3 && (
+              <form onSubmit={handleImportCsv} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.txt,text/csv"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    loadCsvFile(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+                <div
+                  className="cw-csv-dropzone"
+                  data-dragover={csvDragOver}
+                  onClick={() => !busy && fileInputRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!busy) setCsvDragOver(true);
+                  }}
+                  onDragLeave={() => setCsvDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setCsvDragOver(false);
+                    if (!busy) loadCsvFile(e.dataTransfer.files?.[0]);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ' ') && !busy) {
+                      e.preventDefault();
+                      fileInputRef.current?.click();
+                    }
+                  }}
+                >
+                  {csvText ? <FileSpreadsheet size={24} /> : <Upload size={24} />}
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>
+                    {csvFileName ? csvFileName : 'Drop Exportify / Spotify .csv here or click to browse'}
+                  </div>
+                  <div className="cw-muted" style={{ fontSize: 12 }}>
+                    {csvText
+                      ? `~${Math.max(0, csvText.trim().split(/\r?\n/).length - 1)} lines (${Math.max(1, Math.round(csvText.length / 1024))} KB)`
+                      : 'Supports Exportify, Soundiiz, TuneMyMusic, and Track Name / Artist Name(s) CSVs'}
+                  </div>
+                </div>
+
+                {csvText && (
+                  <GlassInput
+                    value={csvTitle}
+                    tint={accentHex}
+                    intensity={intensity}
+                    placeholder="Playlist name..."
+                    onChange={(e) => setCsvTitle(e.target.value)}
+                    onClear={() => setCsvTitle('')}
+                  />
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                  <GlassButton type="button" variant="glass" intensity={intensity} onClick={onClose} disabled={busy}>
+                    Cancel
+                  </GlassButton>
+                  <GlassButton
+                    type="submit"
+                    variant="filled"
+                    tint={accentHex}
+                    intensity={intensity}
+                    disabled={busy || !csvText.trim()}
+                    icon={busy ? <Loader2 size={15} className="cw-spin" /> : <Download size={15} />}
+                  >
+                    {busy ? 'Importing...' : 'Import CSV'}
+                  </GlassButton>
+                </div>
+              </form>
+            )}
 
             {statusMsg && <div style={{ fontSize: 13, color: 'var(--cw-accent)', fontWeight: 650 }}>{statusMsg}</div>}
             {errorMsg && <div style={{ fontSize: 13, color: '#ff5c5c' }}>{errorMsg}</div>}

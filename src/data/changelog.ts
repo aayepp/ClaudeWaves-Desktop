@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.0.1';
 export const CLAUDEWAVES_REPO_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop';
 export const CLAUDEWAVES_RELEASES_URL = 'https://github.com/aayepp/ClaudeWaves-Desktop/releases/latest';
 
@@ -12,6 +12,16 @@ export interface ChangelogRelease {
 }
 
 export const DESKTOP_CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '1.0.1',
+    date: '2026-11-25',
+    summary: 'Full Spotify Playlist & Liked Songs Importer (TOTP + Pathfinder) + Exportify CSV Import.',
+    added: [
+      'Live Spotify Web Player TOTP + Client-Token authentication and header capture during 1-click sign-in.',
+      'Pathfinder GraphQL libraryV3, fetchPlaylist, and fetchLibraryTracks engine supporting public/private Spotify playlists (up to 500 matched tracks) and 1-click Sync Spotify Liked Songs.',
+      'CSV / Exportify drag-and-drop & file picker importer supporting Exportify, Soundiiz, and TuneMyMusic exports.',
+    ],
+  },
   {
     version: '1.0.0',
     date: '2026-11-25',

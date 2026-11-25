@@ -26,6 +26,7 @@ export interface RemotePlaylistItem {
 export interface ImportedPlaylistResult {
   title: string;
   source: 'youtube' | 'spotify';
+  matchedCount?: number;
   totalSourceTracks?: number;
   tracks: Track[];
 }
@@ -82,5 +83,23 @@ export function importPlaylistByUrl(url: string): Promise<ImportedPlaylistResult
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
+  });
+}
+
+export function importSpotifyLikedSongs(): Promise<ImportedPlaylistResult> {
+  return apiJson<ImportedPlaylistResult>('/api/spotify/import-liked', {
+    method: 'POST',
+  });
+}
+
+export function importPlaylistFromCsv(
+  csvText: string,
+  fileName?: string,
+  title?: string,
+): Promise<ImportedPlaylistResult> {
+  return apiJson<ImportedPlaylistResult>('/api/import/csv', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csvText, fileName, title }),
   });
 }
