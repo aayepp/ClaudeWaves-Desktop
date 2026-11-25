@@ -2,7 +2,7 @@
 
 Native Windows YouTube Music desktop client built with **Electron + React + TypeScript + Vite** by **aayepp**.
 
-## Features (v1.4.0)
+## Features (v1.0.0)
 
 - **7 Switchable App Layout Skins**: ClaudeWaves Liquid Glass, Spotify Desktop, YouTube Music, Apple Music macOS, Tidal HiFi Studio, SoundCloud Wave, and Nothing OS Dot-Matrix — each with Dark, Light, AMOLED, and 12 curated accent swatches.
 - **Native Desktop Integration**: Windows System Tray, Close-to-Tray, Single-Instance Lock, Global Media Hotkeys, always-on-top Floating Lyrics Overlay with click-through Lock, and Ambient Fullscreen Visualizer (`F11`).
